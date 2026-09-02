@@ -34,13 +34,15 @@ enum Weekday: Int, Codable, CaseIterable, Identifiable, Comparable {
     static func < (lhs: Weekday, rhs: Weekday) -> Bool { lhs.rawValue < rhs.rawValue }
 
     /// Calendar usa 1=domingo; aquí 1=lunes para que la semana empiece como se lee en México.
-    static func from(_ date: Date) -> Weekday {
+    /// nonisolated: son cálculos puros de fecha, no tocan estado de la app, y se usan como
+    /// valores por defecto de parámetros (Swift no permite ahí un default MainActor-isolated).
+    nonisolated static func from(_ date: Date) -> Weekday {
         let systemWeekday = Calendar.current.component(.weekday, from: date)
         let mondayBased = systemWeekday == 1 ? 7 : systemWeekday - 1
         return Weekday(rawValue: mondayBased) ?? .monday
     }
 
-    static var today: Weekday { from(Date()) }
+    nonisolated static var today: Weekday { from(Date()) }
 
     var next: Weekday { Weekday(rawValue: rawValue == 7 ? 1 : rawValue + 1) ?? .monday }
 }
@@ -61,12 +63,12 @@ struct TimeOfDay: Codable, Hashable, Comparable {
 
     static func < (lhs: TimeOfDay, rhs: TimeOfDay) -> Bool { lhs.totalMinutes < rhs.totalMinutes }
 
-    static var now: TimeOfDay {
+    nonisolated static var now: TimeOfDay {
         let parts = Calendar.current.dateComponents([.hour, .minute], from: Date())
         return TimeOfDay(parts.hour ?? 0, parts.minute ?? 0)
     }
 
-    static func from(_ date: Date) -> TimeOfDay {
+    nonisolated static func from(_ date: Date) -> TimeOfDay {
         let parts = Calendar.current.dateComponents([.hour, .minute], from: date)
         return TimeOfDay(parts.hour ?? 0, parts.minute ?? 0)
     }
