@@ -16,6 +16,12 @@ struct ASCENDApp: App {
                 }
             }
             .environmentObject(appState)
+            .task {
+                await NotificationService.shared.refreshStatus()
+                if appState.isOnboarded {
+                    await NotificationService.shared.reschedule(state: appState)
+                }
+            }
         }
     }
 }

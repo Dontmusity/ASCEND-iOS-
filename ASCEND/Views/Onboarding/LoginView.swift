@@ -9,12 +9,17 @@ struct LoginView: View {
         VStack(spacing: 24) {
             Spacer()
 
-            AscendLogo()
-                .frame(width: 56, height: 56)
+            AscendLogoTile(size: 84)
 
             VStack(spacing: 4) {
-                Text("ASCEND").font(.title.bold())
-                Text("Plan. Focus. Conquer.").font(.subheadline).foregroundColor(.ascendTextSecondary)
+                Text("ASCEND")
+                    .font(.system(size: 34, weight: .light))
+                    .tracking(8)
+                    .foregroundColor(.ascendTextPrimary)
+                Text("PLAN. FOCUS. ACHIEVE.")
+                    .font(.caption.weight(.semibold))
+                    .tracking(2)
+                    .foregroundColor(.ascendGold)
             }
 
             VStack(spacing: 12) {

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HabitsView: View {
     @EnvironmentObject private var appState: AppState
+    @State private var showEditor = false
 
     private var groupedByArea: [(HabitArea, [Habit])] {
         HabitArea.allCases.map { area in
@@ -12,15 +13,29 @@ struct HabitsView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: 22) {
                     analyticsCard
+
+                    if appState.habits.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Aún no sigues ningún hábito")
+                                .font(.subheadline.bold())
+                                .foregroundColor(.ascendTextPrimary)
+                            Text("Agrega los que tú quieras seguir. ASCEND no te impone ninguno.")
+                                .font(.footnote)
+                                .foregroundColor(.ascendTextSecondary)
+                            Button("Crear hábito") { showEditor = true }
+                                .buttonStyle(.borderedProminent)
+                                .tint(.ascendGold)
+                        }
+                        .padding(.horizontal, 20)
+                    }
 
                     ForEach(groupedByArea, id: \.0) { area, habits in
                         VStack(alignment: .leading, spacing: 10) {
                             Label(area.rawValue, systemImage: area.icon)
                                 .font(.headline)
                                 .foregroundColor(.ascendTextPrimary)
-
                             ForEach(habits) { habit in
                                 habitRow(habit)
                             }
@@ -35,26 +50,31 @@ struct HabitsView: View {
             .navigationTitle("Hábitos")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) { StreakBadge() }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { showEditor = true } label: { Image(systemName: "plus") }
+                        .accessibilityLabel("Nuevo hábito")
+                }
+            }
+            .sheet(isPresented: $showEditor) {
+                HabitEditorSheet { appState.addHabit($0) }
             }
         }
     }
 
     private var analyticsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 24) {
+            HStack(spacing: 20) {
                 statColumn(value: "\(appState.currentStreak)", label: "Racha actual")
                 statColumn(value: "\(appState.bestStreak)", label: "Mejor racha")
-                statColumn(value: "\(appState.accumulatedThisMonth)/30", label: "Este mes")
+                statColumn(value: "\(appState.accumulatedThisMonth)", label: "Días este mes")
             }
-
             HeatmapView()
-
             Text("Un mal día no borra tu camino.")
                 .font(.footnote)
                 .foregroundColor(.ascendTextSecondary)
         }
         .padding(16)
-        .background(Color.ascendCream)
+        .background(Color.ascendSurface)
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .padding(.horizontal, 20)
     }
@@ -65,6 +85,7 @@ struct HabitsView: View {
             Text(label).font(.caption2).foregroundColor(.ascendTextSecondary)
         }
         .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
     }
 
     private func habitRow(_ habit: Habit) -> some View {
@@ -75,7 +96,7 @@ struct HabitsView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(habit.name).foregroundColor(.ascendTextPrimary)
-                    Text(habit.monthProgressText)
+                    Text("\(habit.completedDays.count) días este mes")
                         .font(.caption)
                         .foregroundColor(.ascendTextSecondary)
                 }
@@ -85,11 +106,17 @@ struct HabitsView: View {
                     .font(.title3)
             }
             .padding(14)
+            .frame(minHeight: 44)
             .background(Color.ascendCard)
             .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.ascendGray.opacity(0.15)))
             .clipShape(RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("\(habit.name), \(habit.completedDays.count) días este mes")
+        .accessibilityAddTraits(done ? .isSelected : [])
+        .contextMenu {
+            Button("Eliminar", role: .destructive) { appState.deleteHabit(habit) }
+        }
     }
 }
 
@@ -102,7 +129,40 @@ private struct HeatmapView: View {
             ForEach(1...30, id: \.self) { day in
                 RoundedRectangle(cornerRadius: 3)
                     .fill(appState.isActiveDay(day) ? Color.ascendGold : Color.ascendGray.opacity(0.15))
-                    .frame(height: 16)
+                    .frame(height: 14)
+            }
+        }
+        .accessibilityLabel("Mapa del mes: \(appState.accumulatedThisMonth) días con progreso")
+        .accessibilityElement(children: .ignore)
+    }
+}
+
+struct HabitEditorSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let onSave: (Habit) -> Void
+
+    @State private var name = ""
+    @State private var area: HabitArea = .wellbeing
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("Ej. Dormir antes de la 1am", text: $name)
+                Picker("Área", selection: $area) {
+                    ForEach(HabitArea.allCases) { Text($0.rawValue).tag($0) }
+                }
+            }
+            .ascendListStyle()
+            .navigationTitle("Nuevo hábito")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancelar") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Guardar") {
+                        onSave(Habit(name: name, area: area))
+                        dismiss()
+                    }
+                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
             }
         }
     }

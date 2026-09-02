@@ -6,16 +6,18 @@ struct FocusView: View {
     @State private var timer: Timer? = nil
     @State private var displaySeconds: Int = 20 * 60
     @State private var phrase = DemoData.motivationalPhrases.randomElement() ?? ""
+    @State private var selectedSubject: String = ""
+    @State private var selectedProfileID: UUID? = nil
 
     private let blockOptions = [10, 20, 30, 45]
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 24) {
+                VStack(spacing: 22) {
                     timerCard
-                    appBlockingCard
-                    usageCard
+                    focusProfileCard
+                    if !appState.studySessions.isEmpty { historyCard }
                 }
                 .padding(.vertical, 16)
                 .readableWidth()
@@ -41,8 +43,7 @@ struct FocusView: View {
                 .padding(.horizontal, 30)
 
             ZStack {
-                Circle()
-                    .stroke(Color.ascendGray.opacity(0.15), lineWidth: 10)
+                Circle().stroke(Color.ascendGray.opacity(0.15), lineWidth: 10)
                 Circle()
                     .trim(from: 0, to: progress)
                     .stroke(Color.ascendGold, style: StrokeStyle(lineWidth: 10, lineCap: .round))
@@ -50,15 +51,13 @@ struct FocusView: View {
                 Text(timeText)
                     .font(.system(.title, design: .rounded).bold())
                     .minimumScaleFactor(0.5)
-                    .accessibilityLabel(accessibleTimeText)
+                    .accessibilityLabel("\(displaySeconds / 60) minutos \(displaySeconds % 60) segundos restantes")
             }
             .frame(width: 180, height: 180)
 
             if !appState.isFocusSessionActive {
                 Picker("Micro-bloque", selection: $appState.focusBlockMinutes) {
-                    ForEach(blockOptions, id: \.self) { minutes in
-                        Text("\(minutes) min").tag(minutes)
-                    }
+                    ForEach(blockOptions, id: \.self) { Text("\($0) min").tag($0) }
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 30)
@@ -66,9 +65,18 @@ struct FocusView: View {
                     displaySeconds = newValue * 60
                 }
 
+                if !appState.subjects.isEmpty {
+                    Picker("Materia", selection: $selectedSubject) {
+                        Text("Sin materia").tag("")
+                        ForEach(appState.subjects, id: \.self) { Text($0).tag($0) }
+                    }
+                    .padding(.horizontal, 30)
+                }
+
                 Button("Empezar sesión") { start() }
                     .buttonStyle(.borderedProminent)
                     .tint(.ascendGold)
+                    .frame(minHeight: 44)
             } else {
                 Button("Desbloquear ahora") { stop() }
                     .buttonStyle(.borderedProminent)
@@ -88,23 +96,16 @@ struct FocusView: View {
         String(format: "%02d:%02d", displaySeconds / 60, displaySeconds % 60)
     }
 
-    private var accessibleTimeText: String {
-        "\(displaySeconds / 60) minutos \(displaySeconds % 60) segundos restantes"
-    }
-
-    /// Reanuda el conteo si ya había una sesión activa en AppState (p. ej. al volver de otro tab):
-    /// el tiempo real corre por reloj de pared en AppState, aquí solo se refresca la vista cada segundo.
     private func resumeIfNeeded() {
-        if appState.isFocusSessionActive {
-            if appState.focusSecondsRemaining <= 0 {
-                appState.unlockAllNow()
-                displaySeconds = appState.focusBlockMinutes * 60
-            } else {
-                displaySeconds = appState.focusSecondsRemaining
-                armTicker()
-            }
-        } else {
+        guard appState.isFocusSessionActive else {
             displaySeconds = appState.focusBlockMinutes * 60
+            return
+        }
+        if appState.focusSecondsRemaining <= 0 {
+            stop()
+        } else {
+            displaySeconds = appState.focusSecondsRemaining
+            armTicker()
         }
     }
 
@@ -117,7 +118,7 @@ struct FocusView: View {
     private func stop() {
         timer?.invalidate()
         timer = nil
-        appState.unlockAllNow()
+        appState.finishFocusSession(subject: selectedSubject.isEmpty ? nil : selectedSubject)
         displaySeconds = appState.focusBlockMinutes * 60
     }
 
@@ -125,66 +126,68 @@ struct FocusView: View {
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
             Task { @MainActor in
-                let remaining = appState.focusSecondsRemaining
-                displaySeconds = remaining
-                if remaining <= 0 {
-                    stop()
-                }
+                displaySeconds = appState.focusSecondsRemaining
+                if displaySeconds <= 0 { stop() }
             }
         }
     }
 
-    // MARK: Bloqueo de apps (simulado)
+    // MARK: Perfil de enfoque
 
-    private var appBlockingCard: some View {
+    private var focusProfileCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Apps a bloquear durante la sesión").font(.headline)
-            ForEach(appState.blockableApps) { app in
-                Button {
-                    appState.toggleBlock(app)
-                } label: {
-                    HStack {
-                        Image(systemName: app.icon).accessibilityHidden(true)
-                        Text(app.name)
-                        Spacer()
-                        Image(systemName: app.isBlocked ? "lock.fill" : "lock.open")
-                            .foregroundColor(app.isBlocked ? .ascendGold : .ascendGray)
-                            .accessibilityHidden(true)
+            Text("Modo de enfoque").font(.headline).foregroundColor(.ascendTextPrimary)
+
+            if appState.focusProfiles.isEmpty {
+                EmptyHint(text: "Crea perfiles de enfoque en Perfil → Enfoque y bloqueo para elegir qué apps limitar.")
+            } else {
+                ForEach(appState.focusProfiles) { profile in
+                    Button {
+                        selectedProfileID = selectedProfileID == profile.id ? nil : profile.id
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(profile.name).foregroundColor(.ascendTextPrimary)
+                                Text(profile.blockedApps.isEmpty ? "Sin apps seleccionadas"
+                                     : profile.blockedApps.joined(separator: ", "))
+                                    .font(.caption).foregroundColor(.ascendTextSecondary).lineLimit(1)
+                            }
+                            Spacer()
+                            Image(systemName: selectedProfileID == profile.id ? "checkmark.circle.fill" : "circle")
+                                .foregroundColor(selectedProfileID == profile.id ? .ascendGold : .ascendGray)
+                        }
+                        .padding(12)
+                        .frame(minHeight: 44)
+                        .background(Color.ascendCard)
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.ascendGray.opacity(0.15)))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
-                    .padding(12)
-                    .frame(minHeight: 44)
-                    .background(Color.ascendCard)
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.ascendGray.opacity(0.15)))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .foregroundColor(.ascendTextPrimary)
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("\(app.name), \(app.isBlocked ? "bloqueada" : "desbloqueada")")
-                .accessibilityAddTraits(app.isBlocked ? .isSelected : [])
             }
-            Text("Nunca se bloquean: \(appState.vitalApps.joined(separator: ", ")).")
-                .font(.caption)
+
+            Text(ScreenTimeService.availabilityNote)
+                .font(.caption2)
                 .foregroundColor(.ascendTextSecondary)
         }
         .padding(.horizontal, 20)
     }
 
-    // MARK: Medidor de uso (dato demo, solo tiempo)
-
-    private var usageCard: some View {
+    private var historyCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Uso del celular hoy").font(.headline)
+            Text("Tus sesiones").font(.headline).foregroundColor(.ascendTextPrimary)
+            let total = appState.studySessions.reduce(0) { $0 + $1.minutes }
             HStack {
-                Text("\(appState.phoneUsageMinutesToday / 60) h \(appState.phoneUsageMinutesToday % 60) min")
-                    .font(.title3.bold())
+                Text("\(appState.studySessions.count) sesiones")
                 Spacer()
-                Text("\(appState.focusMinutesToday) min en enfoque")
-                    .font(.caption)
+                Text("\(total / 60)h \(total % 60)m en total")
                     .foregroundColor(.ascendTextSecondary)
             }
+            .font(.subheadline)
         }
         .padding(16)
-        .background(Color.ascendCream)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.ascendSurface)
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .padding(.horizontal, 20)
     }

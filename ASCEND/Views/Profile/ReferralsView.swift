@@ -68,11 +68,18 @@ struct ReferralsView: View {
                 .background(Color.ascendCream)
                 .clipShape(RoundedRectangle(cornerRadius: 14))
 
-                Button("Simular invitado nuevo (demo)") {
-                    appState.simulateNewReferral()
+                Text("Para contar un referido de verdad hace falta un servidor que valide quién se registró con tu código. ASCEND todavía no tiene backend, así que el contador no sube solo.")
+                    .font(.caption2)
+                    .foregroundColor(.ascendTextSecondary)
+                    .multilineTextAlignment(.center)
+
+                #if DEBUG
+                Button("Registrar referido (solo pruebas)") {
+                    appState.registerReferral()
                 }
                 .buttonStyle(.bordered)
                 .tint(.ascendGray)
+                #endif
             }
             .padding(20)
             .readableWidth()

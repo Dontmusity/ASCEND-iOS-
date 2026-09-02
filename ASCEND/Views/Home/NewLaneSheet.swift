@@ -69,7 +69,8 @@ struct NewLaneSheet: View {
     }
 
     private func save() {
-        appState.addCustomLane(name: name, colorHex: colorHex, icon: icon)
+        appState.addCustomLane(name: name, colorHex: colorHex, icon: icon,
+                               notificationsEnabled: notificationsEnabled)
         dismiss()
     }
 }
