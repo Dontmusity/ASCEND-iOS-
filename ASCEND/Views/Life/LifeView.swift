@@ -8,6 +8,14 @@ struct LifeView: View {
         NavigationStack {
             List {
                 Section {
+                    ProgressSummaryCard()
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                } header: {
+                    Text("Tu progreso")
+                }
+
+                Section {
                     goalsBlock
                 } header: {
                     Text("Tus metas")
@@ -331,10 +339,15 @@ struct ResaleView: View {
     var body: some View {
         List {
             Section {
-                Text("Aquí solo se conecta a estudiantes. ASCEND no procesa pagos.")
-                    .font(.footnote)
-                    .foregroundColor(.ascendTextSecondary)
+                Label("ASCEND solo conecta estudiantes entre sí. No procesa pagos, no verifica a compradores/vendedores y no es responsable de lo publicado.", systemImage: "exclamationmark.triangle.fill")
+                    .font(.footnote.bold())
+                    .foregroundColor(.ascendTextPrimary)
+                    .padding(10)
+                    .background(Color.ascendSurface)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
             }
+            .listRowInsets(EdgeInsets())
+            .listRowBackground(Color.clear)
             if appState.resaleItems.isEmpty {
                 Text("Todavía no hay publicaciones. Publica algo que quieras vender o intercambiar.")
                     .font(.footnote).foregroundColor(.ascendTextSecondary)

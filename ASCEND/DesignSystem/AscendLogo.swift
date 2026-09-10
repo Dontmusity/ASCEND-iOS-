@@ -39,6 +39,16 @@ struct AscendMark: View {
     }
 }
 
+extension AscendMark {
+    /// Ícono rasterizado una sola vez: los `tabItem` de SwiftUI solo aceptan Image/Text, no vistas vectoriales.
+    @MainActor static let tabIcon: Image = {
+        let renderer = ImageRenderer(content: AscendMark().frame(width: 28, height: 28))
+        renderer.scale = 3
+        guard let uiImage = renderer.uiImage else { return Image(systemName: "sun.max") }
+        return Image(uiImage: uiImage)
+    }()
+}
+
 /// Versión en mosaico dorado, como el ícono de la app.
 struct AscendLogoTile: View {
     var size: CGFloat = 72

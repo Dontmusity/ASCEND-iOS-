@@ -43,6 +43,8 @@ struct AppSnapshot: Codable {
     var bestStreak: Int
     var lastStreakDate: Date?
     var activeDates: [Date]
+    /// Opcional: los snapshots guardados antes de esta versión no traen esta clave.
+    var entryCompletions: [String: Bool]?
 
     var proUntil: Date?
     var proPlanRaw: String?
@@ -52,6 +54,11 @@ struct AppSnapshot: Codable {
     var redeemedTierCounts: [Int]
 
     var isOnboarded: Bool
+
+    // Opcionales: snapshots guardados antes de esta versión no traen estas claves.
+    var ageConfirmed18Plus: Bool?
+    var legalAccepted: Bool?
+    var legalAcceptedDate: Date?
 }
 
 enum Persistence {

@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 enum CarouselPage: Hashable {
     case builtin(CalendarLane)
@@ -11,6 +12,7 @@ struct HomeView: View {
     @State private var selectedPage: CarouselPage = .builtin(.all)
     @State private var showNewEvent = false
     @State private var showNewLane = false
+    private let completionTicker = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
 
     /// Los carruseles se adaptan: si no estudias, no aparece Escuela; si no entrenas, no aparece Gym.
     private var pages: [CarouselPage] {
@@ -38,7 +40,26 @@ struct HomeView: View {
             .navigationBarHidden(true)
             .sheet(isPresented: $showNewEvent) { NewEventSheet() }
             .sheet(isPresented: $showNewLane) { NewLaneSheet() }
+            .onAppear { appState.checkEndedEntries() }
+            .onReceive(completionTicker) { _ in appState.checkEndedEntries() }
+            .alert(
+                "¿Completaste \"\(appState.pendingCompletionEntry?.title ?? "")\"?",
+                isPresented: Binding(
+                    get: { appState.pendingCompletionEntry != nil },
+                    set: { if !$0 { appState.pendingCompletionEntryID = nil } }
+                )
+            ) {
+                Button("Sí") { answerPendingCompletion(true) }
+                Button("No") { answerPendingCompletion(false) }
+                Button("Preguntar después", role: .cancel) { appState.pendingCompletionEntryID = nil }
+            }
         }
+    }
+
+    private func answerPendingCompletion(_ done: Bool) {
+        guard let id = appState.pendingCompletionEntryID else { return }
+        appState.setCompletion(id, done: done)
+        appState.pendingCompletionEntryID = nil
     }
 
     // MARK: Encabezado

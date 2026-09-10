@@ -10,6 +10,11 @@ final class AppState: ObservableObject {
     @Published var isOnboarded: Bool = false
     @Published var profile: UserProfile = UserProfile()
 
+    // MARK: Legal (edad mínima + aceptación de Aviso de Privacidad/Términos)
+    @Published var ageConfirmed18Plus: Bool = false
+    @Published var legalAccepted: Bool = false
+    @Published var legalAcceptedDate: Date? = nil
+
     // MARK: Escuela
     @Published var education = UserEducation()
     @Published var classes: [SchoolClass] = []
@@ -62,6 +67,11 @@ final class AppState: ObservableObject {
     @Published private(set) var activeDates: Set<Date> = []
     @Published private(set) var bestStreak: Int = 0
 
+    // MARK: Cumplimiento de actividades ("¿completaste esto?")
+    /// Clave "idDeEntrada|yyyy-MM-dd" -> true/false. No se pregunta dos veces por la misma entrada/día.
+    @Published var entryCompletions: [String: Bool] = [:]
+    @Published var pendingCompletionEntryID: String? = nil
+
     // MARK: Suscripción / referidos
     @Published var proUntil: Date? = nil
     @Published var proPlan: SubscriptionPlan? = nil
@@ -95,9 +105,12 @@ final class AppState: ObservableObject {
             expensesPINEnabled: expensesPINEnabled, expensesPIN: expensesPIN,
             notificationPrefs: notificationPrefs, focusProfiles: focusProfiles,
             streakCount: currentStreak, bestStreak: bestStreak, lastStreakDate: activeDates.max(),
-            activeDates: Array(activeDates), proUntil: proUntil, proPlanRaw: proPlan?.rawValue,
+            activeDates: Array(activeDates), entryCompletions: entryCompletions,
+            proUntil: proUntil, proPlanRaw: proPlan?.rawValue,
             proWillRenew: proWillRenew, referralCode: referralCode, referralCount: referralCount,
-            redeemedTierCounts: Array(redeemedTierCounts), isOnboarded: isOnboarded
+            redeemedTierCounts: Array(redeemedTierCounts), isOnboarded: isOnboarded,
+            ageConfirmed18Plus: ageConfirmed18Plus, legalAccepted: legalAccepted,
+            legalAcceptedDate: legalAcceptedDate
         )
     }
 
@@ -122,11 +135,15 @@ final class AppState: ObservableObject {
         expensesPINEnabled = s.expensesPINEnabled; expensesPIN = s.expensesPIN
         notificationPrefs = s.notificationPrefs; focusProfiles = s.focusProfiles
         bestStreak = s.bestStreak; activeDates = Set(s.activeDates)
+        entryCompletions = s.entryCompletions ?? [:]
         proUntil = s.proUntil; proWillRenew = s.proWillRenew
         proPlan = s.proPlanRaw.flatMap(SubscriptionPlan.init(rawValue:))
         referralCode = s.referralCode.isEmpty ? Self.makeReferralCode() : s.referralCode
         referralCount = s.referralCount; redeemedTierCounts = Set(s.redeemedTierCounts)
         isOnboarded = s.isOnboarded
+        ageConfirmed18Plus = s.ageConfirmed18Plus ?? false
+        legalAccepted = s.legalAccepted ?? false
+        legalAcceptedDate = s.legalAcceptedDate
         isLoggedIn = s.isOnboarded // si ya completó onboarding antes, la sesión local sigue viva
     }
 
@@ -163,9 +180,10 @@ final class AppState: ObservableObject {
         freeTimeBlocks = []; manualEvents = []; habits = []; todos = []; goals = []; reminders = []
         resaleItems = []; expenses = []; budget = Budget(); expensesHidden = true
         expensesPINEnabled = false; expensesPIN = ""; notificationPrefs = NotificationPreferences()
-        focusProfiles = []; activeDates = []; bestStreak = 0; proUntil = nil; proPlan = nil
+        focusProfiles = []; activeDates = []; bestStreak = 0; entryCompletions = [:]; proUntil = nil; proPlan = nil
         referralCount = 0; redeemedTierCounts = []; referralCode = Self.makeReferralCode()
         isOnboarded = false; isLoggedIn = false
+        ageConfirmed18Plus = false; legalAccepted = false; legalAcceptedDate = nil
     }
 
     // MARK: - Contexto del día
@@ -555,6 +573,67 @@ final class AppState: ObservableObject {
         }
     }
 
+    // MARK: - Cumplimiento de actividades
+
+    private static let dayKeyFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    private func completionKey(_ entryID: String, date: Date) -> String {
+        "\(entryID)|\(Self.dayKeyFormatter.string(from: date))"
+    }
+
+    func isCompleted(_ entry: ScheduleEntry, date: Date = Date()) -> Bool? {
+        entryCompletions[completionKey(entry.id, date: date)]
+    }
+
+    func setCompletion(_ entryID: String, done: Bool, date: Date = Date()) {
+        entryCompletions[completionKey(entryID, date: date)] = done
+        if done { markActiveToday() }
+    }
+
+    var pendingCompletionEntry: ScheduleEntry? {
+        guard let id = pendingCompletionEntryID else { return nil }
+        return entries().first { $0.id == id }
+    }
+
+    /// Revisa si alguna actividad de hoy ya terminó y todavía no se le preguntó al usuario si la completó.
+    /// Se llama desde Home con un timer mientras la app está abierta (no hay ejecución en segundo plano).
+    func checkEndedEntries() {
+        guard pendingCompletionEntryID == nil else { return }
+        let now = TimeOfDay.now
+        pendingCompletionEntryID = entries()
+            .first { $0.end <= now && isCompleted($0) == nil }?.id
+    }
+
+    /// % del día: cuánto de lo que el propio usuario puso hoy quedó completado.
+    /// No contar algo no lo penaliza aparte de bajar el promedio (ej. 6 de 7 -> 86%).
+    func completionPercent(for date: Date = Date(), lane: CalendarLane = .all) -> Double? {
+        let weekday = Weekday.from(date)
+        let list = entries(for: weekday, lane: lane)
+        guard !list.isEmpty else { return nil }
+        let done = list.filter { entryCompletions[completionKey($0.id, date: date)] == true }.count
+        return Double(done) / Double(list.count) * 100
+    }
+
+    /// Promedio de % de cumplimiento en los últimos `days` días (incluyendo hoy), solo con días que tenían algo agendado.
+    func averageCompletionPercent(days: Int, lane: CalendarLane = .all) -> Double? {
+        let calendar = Calendar.current
+        let percents = (0..<days).compactMap { offset -> Double? in
+            guard let date = calendar.date(byAdding: .day, value: -offset, to: Date()) else { return nil }
+            return completionPercent(for: date, lane: lane)
+        }
+        guard !percents.isEmpty else { return nil }
+        return percents.reduce(0, +) / Double(percents.count)
+    }
+
+    /// Detalle de hoy por entrada, para el desglose de "por qué ese %".
+    func todayCompletionDetail(lane: CalendarLane = .all) -> [(entry: ScheduleEntry, done: Bool?)] {
+        entries(for: .today, lane: lane).map { ($0, isCompleted($0)) }
+    }
+
     // MARK: - Vida: to-dos y metas
 
     func addTodo(_ todo: TodoItem) { todos.append(todo) }
@@ -620,6 +699,40 @@ final class AppState: ObservableObject {
         expenses.filter { $0.category == .fun_ }.reduce(0) { $0 + $1.amountMXN }
     }
 
+    private func spent(from start: Date, to end: Date = Date()) -> Double {
+        expenses.filter { $0.date >= start && $0.date <= end }.reduce(0) { $0 + $1.amountMXN }
+    }
+
+    var spentToday: Double { spent(from: Calendar.current.startOfDay(for: Date())) }
+
+    var spentThisWeek: Double {
+        let start = Calendar.current.date(byAdding: .day, value: -6, to: Calendar.current.startOfDay(for: Date())) ?? Date()
+        return spent(from: start)
+    }
+
+    var spentThisMonth: Double {
+        let comps = Calendar.current.dateComponents([.year, .month], from: Date())
+        return spent(from: Calendar.current.date(from: comps) ?? Date())
+    }
+
+    var spentThisYear: Double {
+        let comps = Calendar.current.dateComponents([.year], from: Date())
+        return spent(from: Calendar.current.date(from: comps) ?? Date())
+    }
+
+    /// Promedios simples: total del periodo entre los días/semanas/meses ya transcurridos.
+    var averageDailySpendThisMonth: Double {
+        let day = Calendar.current.component(.day, from: Date())
+        return day > 0 ? spentThisMonth / Double(day) : 0
+    }
+
+    var averageWeeklySpendThisMonth: Double { averageDailySpendThisMonth * 7 }
+
+    var averageMonthlySpendThisYear: Double {
+        let month = Calendar.current.component(.month, from: Date())
+        return month > 0 ? spentThisYear / Double(month) : 0
+    }
+
     func setMonthlyBudget(_ amount: Double) { budget.monthlyAmount = max(0, amount) }
     func setWeeklyBudget(_ amount: Double?) { budget.weeklyAmount = amount }
     func resetBudget() { budget = Budget() }
@@ -647,6 +760,16 @@ final class AppState: ObservableObject {
         var value = raw
         if let first = value.first, "=+-@".contains(first) { value = "'" + value }
         return "\"\(value.replacingOccurrences(of: "\"", with: "\"\""))\""
+    }
+
+    /// Derecho de acceso/portabilidad (ARCO / CCPA): todo lo que ASCEND sabe de ti, en un solo archivo.
+    func exportAllDataJSON() -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        guard let data = try? encoder.encode(snapshot()),
+              let text = String(data: data, encoding: .utf8) else { return "{}" }
+        return text
     }
 
     func unlockExpenses(withPIN pin: String) -> Bool {

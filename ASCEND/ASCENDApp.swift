@@ -11,6 +11,9 @@ struct ASCENDApp: App {
                     LoginView()
                 } else if !appState.isOnboarded {
                     OnboardingView()
+                } else if !appState.legalAccepted {
+                    // Cuentas creadas antes de agregar el consentimiento legal: se les pide una sola vez.
+                    LegalConsentGateView()
                 } else {
                     RootView()
                 }

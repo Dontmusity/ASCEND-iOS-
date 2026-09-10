@@ -59,6 +59,12 @@ struct ProfileView: View {
                     NavigationLink("Cuenta") { AccountSettingsView() }
                 }
 
+                Section("Legal") {
+                    NavigationLink("Aviso de Privacidad") { PrivacyPolicyView() }
+                    NavigationLink("Términos de Uso") { TermsOfServiceView() }
+                    NavigationLink("Aviso Legal") { LegalNoticeView() }
+                }
+
                 #if DEBUG
                 Section("Desarrollo") {
                     Button("Cargar datos de ejemplo") { appState.loadSampleData() }
@@ -287,6 +293,7 @@ struct PrivacySettingsView: View {
     @EnvironmentObject private var appState: AppState
     @State private var showSetPIN = false
     @State private var newPIN = ""
+    @State private var showDataExport = false
 
     var body: some View {
         Form {
@@ -294,6 +301,15 @@ struct PrivacySettingsView: View {
                 Text("ASCEND guarda tu horario, hábitos, gastos, metas y preferencias solo en este dispositivo. No hay servidor ni terceros involucrados.")
                     .font(.footnote)
                     .foregroundColor(.ascendTextSecondary)
+            }
+
+            Section {
+                Button("Solicitar mis datos") { showDataExport = true }
+                NavigationLink("Aviso de Privacidad") { PrivacyPolicyView() }
+            } header: {
+                Text("Tus derechos (ARCO / CCPA)")
+            } footer: {
+                Text("Puedes acceder, rectificar, cancelar u oponerte al uso de tus datos. \"Eliminar cuenta\" en Perfil → Cuenta es tu derecho de cancelación; aquí puedes ver y exportar todo lo que ASCEND tiene guardado de ti.")
             }
 
             Section("Gastos") {
@@ -326,6 +342,33 @@ struct PrivacySettingsView: View {
             }
             Button("Cancelar", role: .cancel) {
                 if appState.expensesPIN.isEmpty { appState.expensesPINEnabled = false }
+            }
+        }
+        .sheet(isPresented: $showDataExport) { DataExportView() }
+    }
+}
+
+/// Derecho de acceso/portabilidad: todo lo que ASCEND sabe de ti, legible y exportable.
+struct DataExportView: View {
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                Text(appState.exportAllDataJSON())
+                    .font(.system(.footnote, design: .monospaced))
+                    .textSelection(.enabled)
+                    .padding()
+            }
+            .navigationTitle("Tus datos")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cerrar") { dismiss() } }
+                ToolbarItem(placement: .primaryAction) {
+                    ShareLink(item: appState.exportAllDataJSON()) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                }
             }
         }
     }

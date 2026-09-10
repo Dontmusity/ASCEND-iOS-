@@ -17,12 +17,18 @@ struct UpgradeView: View {
                 } else {
                     plansSection
                     purchaseButtons
+                    renewalDisclosure
                 }
 
                 Text("Si tus días Pro llegan a 0, vuelves al plan Gratis sin penalización y sin cobros sorpresa.")
                     .font(.footnote)
                     .foregroundColor(.ascendTextSecondary)
                     .multilineTextAlignment(.center)
+
+                Link("Administrar o cancelar suscripción en el App Store",
+                     destination: URL(string: "https://apps.apple.com/account/subscriptions")!)
+                    .font(.footnote)
+                    .foregroundColor(.ascendTextSecondary)
 
                 Text("El cobro real todavía no está conectado: requiere una cuenta del Apple Developer Program y los productos creados en App Store Connect (ver README).")
                     .font(.caption2)
@@ -77,11 +83,18 @@ struct UpgradeView: View {
                     .buttonStyle(.bordered)
                     .tint(.ascendGray)
             }
-            Link("Administrar suscripción en el App Store",
-                 destination: URL(string: "https://apps.apple.com/account/subscriptions")!)
-                .font(.footnote)
-                .foregroundColor(.ascendTextSecondary)
         }
+    }
+
+    /// Apple exige mostrar precio, duración y forma de cancelar ANTES de la compra, no solo después.
+    private var renewalDisclosure: some View {
+        VStack(spacing: 4) {
+            Text("El plan mensual se renueva cada mes por $\(Int(monthlyPrice)) y el anual cada año por $\(Int(annualPrice)), hasta que canceles.")
+            Text("Cancela cuando quieras desde Ajustes → tu nombre → Suscripciones en el App Store.")
+        }
+        .font(.caption2)
+        .foregroundColor(.ascendTextSecondary)
+        .multilineTextAlignment(.center)
     }
 
     private var plansSection: some View {

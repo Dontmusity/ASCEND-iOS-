@@ -5,11 +5,20 @@ struct OnboardingView: View {
     @StateObject private var notifications = NotificationService.shared
 
     private enum Step: Hashable {
+        case ageGate, legalConsent
         case welcome, education, educationDetail, schoolHours, classes
         case freeTime, activity, gym, sport, meals, physicalGoal, custom, notifications
     }
 
+    /// El gate de edad y el consentimiento legal son obligatorios: no se pueden omitir con
+    /// "Omitir personalización" (esa opción salta la rutina, no el consentimiento requerido por ley).
+    private static let nonSkippableSteps: Set<Step> = [.ageGate, .legalConsent]
+
     @State private var index = 0
+    @State private var ageGateAnswer: Bool? = nil
+    @State private var legalConsentChecked = false
+    @State private var showPrivacyPolicy = false
+    @State private var showTerms = false
 
     // Respuestas en borrador: nada se escribe en AppState hasta terminar cada paso.
     @State private var name = ""
@@ -35,7 +44,7 @@ struct OnboardingView: View {
 
     /// El flujo se adapta solo: si no estudia, los pasos escolares no existen.
     private var steps: [Step] {
-        var result: [Step] = [.welcome, .education]
+        var result: [Step] = [.ageGate, .legalConsent, .welcome, .education]
         if education.level.studies {
             result.append(.educationDetail)
             result.append(.schoolHours)
@@ -94,7 +103,26 @@ struct OnboardingView: View {
             ProgressView(value: Double(index + 1), total: Double(steps.count))
                 .tint(.ascendGold)
                 .padding(.horizontal, 24)
+            if !Self.nonSkippableSteps.contains(currentStep) {
+                VStack(spacing: 4) {
+                    Button("Omitir personalización", action: skipPersonalization)
+                        .font(.footnote.bold())
+                        .foregroundColor(.ascendGray)
+                    Text("Puedes configurar todo esto después desde Perfil → Ajustes.")
+                        .font(.caption2)
+                        .foregroundColor(.ascendTextSecondary)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(.horizontal, 24)
+            }
         }
+    }
+
+    /// Salta el resto de la encuesta (rutina, horarios, etc.), NUNCA el consentimiento legal:
+    /// solo aparece una vez que ya pasaste el gate de edad y aceptaste el aviso de privacidad.
+    private func skipPersonalization() {
+        if name.trimmingCharacters(in: .whitespaces).isEmpty { name = "Tú" }
+        finish()
     }
 
     private var footer: some View {
@@ -121,6 +149,8 @@ struct OnboardingView: View {
 
     private var canAdvance: Bool {
         switch currentStep {
+        case .ageGate: return ageGateAnswer == true
+        case .legalConsent: return legalConsentChecked
         case .welcome: return !name.trimmingCharacters(in: .whitespaces).isEmpty
         case .education: return education.level != .none || education.level == .none // siempre hay respuesta válida
         case .educationDetail:
@@ -144,6 +174,9 @@ struct OnboardingView: View {
     }
 
     private func finish() {
+        appState.ageConfirmed18Plus = true
+        appState.legalAccepted = true
+        appState.legalAcceptedDate = Date()
         appState.profile.name = name
         appState.education = education
         appState.classes = classes
@@ -166,6 +199,8 @@ struct OnboardingView: View {
     @ViewBuilder
     private var stepContent: some View {
         switch currentStep {
+        case .ageGate: ageGateStep
+        case .legalConsent: legalConsentStep
         case .welcome: welcomeStep
         case .education: educationStep
         case .educationDetail: educationDetailStep
@@ -189,6 +224,57 @@ struct OnboardingView: View {
                 Text(subtitle).font(.subheadline).foregroundColor(.ascendTextSecondary)
             }
         }
+    }
+
+    // MARK: Edad y consentimiento legal
+
+    private var ageGateStep: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            title("¿Tienes 18 años o más?", "ASCEND está diseñado para estudiantes mayores de edad.")
+            AscendOptionRow(label: "Sí, tengo 18 años o más", isSelected: ageGateAnswer == true) {
+                ageGateAnswer = true
+            }
+            AscendOptionRow(label: "No", isSelected: ageGateAnswer == false) {
+                ageGateAnswer = false
+            }
+            if ageGateAnswer == false {
+                Text("Por ahora ASCEND no puede continuar contigo. Vuelve cuando cumplas 18 años.")
+                    .font(.footnote)
+                    .foregroundColor(.ascendTextSecondary)
+            }
+        }
+    }
+
+    private var legalConsentStep: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            title("Antes de empezar", "Guardamos todo esto solo en tu teléfono, sin servidores ni anuncios de terceros. Puedes leer el detalle completo aquí.")
+
+            VStack(spacing: 8) {
+                Button("Leer Aviso de Privacidad") { showPrivacyPolicy = true }
+                Button("Leer Términos de Uso") { showTerms = true }
+            }
+            .font(.subheadline)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button {
+                legalConsentChecked.toggle()
+            } label: {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: legalConsentChecked ? "checkmark.square.fill" : "square")
+                        .foregroundColor(legalConsentChecked ? .ascendGold : .ascendGray)
+                    Text("He leído y acepto el Aviso de Privacidad y los Términos de Uso.")
+                        .font(.subheadline)
+                        .foregroundColor(.ascendTextPrimary)
+                        .multilineTextAlignment(.leading)
+                }
+            }
+            .buttonStyle(.plain)
+            .padding(12)
+            .background(Color.ascendCard)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .sheet(isPresented: $showPrivacyPolicy) { NavigationStack { PrivacyPolicyView() } }
+        .sheet(isPresented: $showTerms) { NavigationStack { TermsOfServiceView() } }
     }
 
     private var welcomeStep: some View {
@@ -243,10 +329,12 @@ struct OnboardingView: View {
             VStack(spacing: 10) {
                 TimeOfDayPicker(title: "Entrada", time: Binding(
                     get: { education.schoolStart ?? TimeOfDay(7) },
-                    set: { education.schoolStart = $0 }))
+                    set: { education.schoolStart = $0 }),
+                    before: education.schoolEnd)
                 TimeOfDayPicker(title: "Salida", time: Binding(
                     get: { education.schoolEnd ?? TimeOfDay(15) },
-                    set: { education.schoolEnd = $0 }))
+                    set: { education.schoolEnd = $0 }),
+                    after: education.schoolStart)
             }
             .padding()
             .background(Color.ascendCard)

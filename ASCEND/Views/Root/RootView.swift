@@ -5,7 +5,7 @@ struct RootView: View {
         ZStack(alignment: .bottomTrailing) {
             TabView {
                 HomeView()
-                    .tabItem { Label("Hoy", systemImage: "sun.max") }
+                    .tabItem { Label { Text("Hoy") } icon: { AscendMark.tabIcon } }
                 HabitsView()
                     .tabItem { Label("Hábitos", systemImage: "checkmark.seal") }
                 FocusView()

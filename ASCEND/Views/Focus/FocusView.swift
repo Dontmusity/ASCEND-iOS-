@@ -36,6 +36,8 @@ struct FocusView: View {
 
     private var timerCard: some View {
         VStack(spacing: 16) {
+            AscendLogoTile(size: 44)
+
             Text(phrase)
                 .font(.subheadline)
                 .foregroundColor(.ascendTextSecondary)

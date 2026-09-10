@@ -31,9 +31,12 @@ struct WeekdayPicker: View {
 }
 
 /// Selector de hora exacta que trabaja con TimeOfDay pero usa el picker nativo de iOS.
+/// `after`/`before` evitan que el usuario arme un rango invertido (salida antes que entrada).
 struct TimeOfDayPicker: View {
     let title: String
     @Binding var time: TimeOfDay
+    var after: TimeOfDay? = nil
+    var before: TimeOfDay? = nil
 
     var body: some View {
         DatePicker(
@@ -42,8 +45,15 @@ struct TimeOfDayPicker: View {
                 get: { time.date() ?? Date() },
                 set: { time = TimeOfDay.from($0) }
             ),
+            in: range,
             displayedComponents: .hourAndMinute
         )
+    }
+
+    private var range: ClosedRange<Date> {
+        let lower = after?.date() ?? TimeOfDay(0).date() ?? Date.distantPast
+        let upper = before?.date() ?? TimeOfDay(23, 59).date() ?? Date.distantFuture
+        return lower <= upper ? lower...upper : lower...lower
     }
 }
 
