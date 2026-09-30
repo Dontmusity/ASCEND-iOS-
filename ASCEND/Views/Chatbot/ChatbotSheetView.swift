@@ -13,8 +13,10 @@ struct ChatbotButton: View {
                 .frame(width: 56, height: 56)
                 .background(Color.ascendGold)
                 .clipShape(Circle())
-                .shadow(color: .black.opacity(0.15), radius: 6, y: 3)
+                .goldGlow()
         }
+        .buttonStyle(AscendPressStyle())
+        .accessibilityLabel("Ascender")
         .sheet(isPresented: $showChat) {
             ChatbotSheetView()
         }

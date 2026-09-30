@@ -9,18 +9,25 @@ struct StreakBadge: View {
         Button {
             showDetail = true
         } label: {
-            HStack(spacing: 4) {
-                Text("🔥").accessibilityHidden(true)
+            HStack(spacing: 5) {
+                Image(systemName: "flame.fill")
+                    .font(.system(size: 12))
+                    .foregroundColor(.ascendGold)
+                    .accessibilityHidden(true)
                 Text("\(appState.currentStreak)")
-                    .font(.subheadline.bold())
-                    .foregroundColor(.ascendTextPrimary)
+                    .font(.subheadline.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundColor(.ascendTextSecondary)
+                    .contentTransition(.numericText())
+                    .animation(.default, value: appState.currentStreak)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 5)
+            .overlay(Capsule().stroke(Color.ascendHairline, lineWidth: 1))
             .frame(minHeight: 44)
-            .background(Color.ascendCream)
-            .clipShape(Capsule())
+            .contentShape(Rectangle())
         }
+        .buttonStyle(AscendPressStyle())
         .accessibilityLabel("Racha actual: \(appState.currentStreak) días")
         .popover(isPresented: $showDetail) {
             StreakDetailView()
