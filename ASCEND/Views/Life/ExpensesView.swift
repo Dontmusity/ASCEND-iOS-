@@ -53,8 +53,8 @@ struct ExpensesView: View {
             Section {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("PRIVADO").font(.caption2.bold()).foregroundColor(.ascendTextSecondary)
-                        Text(amountText(appState.totalSpentMXN))
+                        Text("PRIVADO · ESTE MES").font(.caption2.bold()).foregroundColor(.ascendTextSecondary)
+                        Text(amountText(appState.spentThisMonth))
                             .font(.title2.bold())
                             .foregroundColor(.ascendTextPrimary)
                         if appState.budget.isConfigured {

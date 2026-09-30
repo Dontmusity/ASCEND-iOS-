@@ -65,4 +65,3 @@ Al marcar un hábito desde el widget se guarda al instante y la app lo relee al 
 - Pendientes del rediseño, marcados con `// TODO(diseño)`: respuestas rápidas y campo de texto del
   chatbot (el bot aún no responde mensajes), lista "Ya se unieron" en referidos (sin backend no se
   sabe quién usó el código) y botón "Pausar" de la sesión de enfoque (no existe pausa en `AppState`).
-- El tracker de hábitos guarda días del mes (1–31), no fechas reales.

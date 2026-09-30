@@ -132,7 +132,7 @@ struct HabitsView: View {
     /// Avance del mes del área: días marcados entre días transcurridos, promediado entre sus hábitos.
     private func monthProgress(of habits: [Habit]) -> Double {
         guard !habits.isEmpty, dayOfMonth > 0 else { return 0 }
-        let done = habits.reduce(0) { $0 + min($1.completedDays.count, dayOfMonth) }
+        let done = habits.reduce(0) { $0 + min($1.daysDone(), dayOfMonth) }
         return Double(done) / Double(habits.count * dayOfMonth)
     }
 
@@ -168,7 +168,7 @@ struct HabitsView: View {
 
     private func habitRow(_ habit: Habit, daysInMonth: Int) -> some View {
         let done = appState.isHabitDoneToday(habit)
-        let count = habit.completedDays.count
+        let count = habit.daysDone()
         return Button {
             appState.toggleHabit(habit)
         } label: {

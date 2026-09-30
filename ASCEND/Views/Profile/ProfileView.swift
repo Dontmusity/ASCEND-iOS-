@@ -418,6 +418,28 @@ struct PrivacySettingsView: View {
     @State private var newPIN = ""
     @State private var showDataExport = false
 
+    /// Acciones que abren la puerta a los gastos: si ya hay PIN, primero se pide el actual.
+    private enum ProtectedAction { case disablePIN, changePIN, exportData }
+    @State private var pendingAction: ProtectedAction? = nil
+    @State private var currentPIN = ""
+    @State private var wrongPIN = false
+
+    private var isLocked: Bool {
+        appState.expensesPINEnabled && !appState.expensesPIN.isEmpty && !appState.expensesUnlockedThisSession
+    }
+
+    private func requirePIN(_ action: ProtectedAction) {
+        if isLocked { pendingAction = action } else { perform(action) }
+    }
+
+    private func perform(_ action: ProtectedAction) {
+        switch action {
+        case .disablePIN: appState.expensesPINEnabled = false
+        case .changePIN: showSetPIN = true
+        case .exportData: showDataExport = true
+        }
+    }
+
     var body: some View {
         Form {
             Section("Datos") {
@@ -427,7 +449,7 @@ struct PrivacySettingsView: View {
             }
 
             Section {
-                Button("Solicitar mis datos") { showDataExport = true }
+                Button("Solicitar mis datos") { requirePIN(.exportData) }
                 NavigationLink("Aviso de Privacidad") { PrivacyPolicyView() }
             } header: {
                 Text("Tus derechos (ARCO / CCPA)")
@@ -436,12 +458,21 @@ struct PrivacySettingsView: View {
             }
 
             Section("Gastos") {
-                Toggle("Bloquear sección con PIN", isOn: $appState.expensesPINEnabled)
-                    .onChange(of: appState.expensesPINEnabled) { enabled in
-                        if enabled && appState.expensesPIN.isEmpty { showSetPIN = true }
-                    }
+                // Encender el PIN es libre; apagarlo pide el PIN actual para que no se pueda saltar.
+                Toggle("Bloquear sección con PIN", isOn: Binding(
+                    get: { appState.expensesPINEnabled },
+                    set: { enabled in
+                        if enabled {
+                            appState.expensesPINEnabled = true
+                            if appState.expensesPIN.isEmpty { showSetPIN = true }
+                        } else {
+                            requirePIN(.disablePIN)
+                        }
+                    }))
                 if appState.expensesPINEnabled {
-                    Button(appState.expensesPIN.isEmpty ? "Definir PIN" : "Cambiar PIN") { showSetPIN = true }
+                    Button(appState.expensesPIN.isEmpty ? "Definir PIN" : "Cambiar PIN") {
+                        if appState.expensesPIN.isEmpty { showSetPIN = true } else { requirePIN(.changePIN) }
+                    }
                 }
                 Text("Tus gastos nunca se comparten con terceros ni se usan para anuncios.")
                     .font(.footnote)
@@ -465,7 +496,30 @@ struct PrivacySettingsView: View {
             }
             Button("Cancelar", role: .cancel) {
                 if appState.expensesPIN.isEmpty { appState.expensesPINEnabled = false }
+                newPIN = ""
             }
+        }
+        .alert("Escribe tu PIN actual", isPresented: Binding(
+            get: { pendingAction != nil },
+            set: { if !$0 { pendingAction = nil } })
+        ) {
+            SecureField("4 dígitos", text: $currentPIN).keyboardType(.numberPad)
+            Button("Continuar") {
+                let action = pendingAction
+                pendingAction = nil
+                if appState.unlockExpenses(withPIN: currentPIN), let action {
+                    perform(action)
+                } else {
+                    wrongPIN = true
+                }
+                currentPIN = ""
+            }
+            Button("Cancelar", role: .cancel) { currentPIN = "" }
+        } message: {
+            Text("Tus gastos están protegidos con PIN.")
+        }
+        .alert("PIN incorrecto", isPresented: $wrongPIN) {
+            Button("OK", role: .cancel) {}
         }
         .sheet(isPresented: $showDataExport) { DataExportView() }
     }
