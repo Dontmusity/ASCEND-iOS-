@@ -352,12 +352,22 @@ struct AscendHeatmap: View {
     var spacing: CGFloat = 5
     var emptyColor: Color = Color.ascendOnSurface.opacity(0.10)
 
+    /// Filas de 10 sin contenedores perezosos: así también se pinta dentro de un widget.
     var body: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: spacing), count: 10), spacing: spacing) {
-            ForEach(Array(levels.enumerated()), id: \.offset) { _, level in
-                RoundedRectangle(cornerRadius: cellHeight * 0.32, style: .continuous)
-                    .fill(Self.color(for: level, empty: emptyColor))
-                    .frame(height: cellHeight)
+        let rows = stride(from: 0, to: levels.count, by: 10).map { Array(levels[$0..<min($0 + 10, levels.count)]) }
+        VStack(spacing: spacing) {
+            ForEach(rows.indices, id: \.self) { row in
+                HStack(spacing: spacing) {
+                    ForEach(0..<10, id: \.self) { column in
+                        if column < rows[row].count {
+                            RoundedRectangle(cornerRadius: cellHeight * 0.32, style: .continuous)
+                                .fill(Self.color(for: rows[row][column], empty: emptyColor))
+                                .frame(height: cellHeight)
+                        } else {
+                            Color.clear.frame(height: cellHeight) // mantiene el ancho de columna en la última fila
+                        }
+                    }
+                }
             }
         }
     }

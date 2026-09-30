@@ -100,7 +100,7 @@ struct HomeView: View {
             HStack(spacing: 9) {
                 AscendMark(strokeColor: .ascendGray, innerColor: .ascendGold)
                     .frame(width: 20, height: 20)
-                AscendKicker(text: Self.dateKicker(Date()))
+                AscendKicker(text: AscendDateText.kicker(Date()))
                 Spacer()
                 StreakBadge()
             }
@@ -117,17 +117,6 @@ struct HomeView: View {
                 .padding(.top, 9)
         }
         .padding(.horizontal, 20)
-    }
-
-    private static let kickerFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "es_MX")
-        f.dateFormat = "EEEE d MMM"
-        return f
-    }()
-
-    static func dateKicker(_ date: Date) -> String {
-        kickerFormatter.string(from: date).replacingOccurrences(of: ".", with: "")
     }
 
     // MARK: Día / Semana / Mes + calendario
@@ -363,7 +352,7 @@ struct AgendaListView: View {
                 LazyVStack(alignment: .leading, spacing: 20) {
                     ForEach(agenda, id: \.date) { day in
                         VStack(alignment: .leading, spacing: 10) {
-                            AscendKicker(text: HomeView.dateKicker(day.date))
+                            AscendKicker(text: AscendDateText.kicker(day.date))
                             ForEach(day.entries) { entry in
                                 HStack(spacing: 12) {
                                     Text(entry.start.label)

@@ -118,6 +118,20 @@ final class AppState: ObservableObject {
         Persistence.save(snapshot())
     }
 
+    /// Guarda ya, sin esperar el debounce. La usan los widgets (su proceso puede morir antes)
+    /// y la app al irse a segundo plano.
+    func saveNow() {
+        persist()
+    }
+
+    /// Relee lo guardado: un widget pudo haber marcado un hábito mientras la app estaba cerrada.
+    func reloadFromDisk() {
+        guard Persistence.load() != nil else { return } // sin nada guardado no hay qué releer
+        let wasLoggedIn = isLoggedIn // releer datos no debe volver a iniciar una sesión cerrada
+        restore()
+        isLoggedIn = wasLoggedIn
+    }
+
     private func restore() {
         guard let s = Persistence.load() else {
             referralCode = Self.makeReferralCode()

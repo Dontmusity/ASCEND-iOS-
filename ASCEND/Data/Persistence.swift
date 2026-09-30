@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(WidgetKit)
+import WidgetKit
+#endif
 
 /// Snapshot serializable de todo lo que el usuario configuró.
 /// Se guarda en UserDefaults como JSON: no hay backend, así que este es el almacenamiento real.
@@ -64,18 +67,38 @@ struct AppSnapshot: Codable {
 enum Persistence {
     private static let key = "ascend.snapshot.v1"
 
+    /// App Group compartido con los widgets. Debe coincidir con el de Signing & Capabilities
+    /// de los DOS targets (app y ASCENDWidgets). Ver README → Widgets.
+    static let appGroupID = "group.com.ascend.app"
+
+    /// Si el App Group no está configurado, iOS devuelve un almacén local: la app sigue
+    /// funcionando igual, solo que los widgets no ven los datos.
+    private static var store: UserDefaults { UserDefaults(suiteName: appGroupID) ?? .standard }
+
     static func save(_ snapshot: AppSnapshot) {
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
-        UserDefaults.standard.set(data, forKey: key)
+        store.set(data, forKey: key)
+        #if canImport(WidgetKit)
+        WidgetCenter.shared.reloadAllTimelines()
+        #endif
     }
 
     static func load() -> AppSnapshot? {
-        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+        // Migración: versiones anteriores guardaban en UserDefaults.standard.
+        if store.data(forKey: key) == nil, let legacy = UserDefaults.standard.data(forKey: key) {
+            store.set(legacy, forKey: key)
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+        guard let data = store.data(forKey: key) else { return nil }
         return try? JSONDecoder().decode(AppSnapshot.self, from: data)
     }
 
-    /// Borra todo lo local. Lo usa "Cerrar sesión" (parcial) y "Eliminar cuenta" (completo).
+    /// Borra todo lo local. Lo usa "Eliminar cuenta".
     static func clear() {
+        store.removeObject(forKey: key)
         UserDefaults.standard.removeObject(forKey: key)
+        #if canImport(WidgetKit)
+        WidgetCenter.shared.reloadAllTimelines()
+        #endif
     }
 }

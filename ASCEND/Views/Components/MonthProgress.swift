@@ -38,3 +38,24 @@ struct MonthProgress {
         return f
     }()
 }
+
+/// Fechas para kickers ("MARTES 9 SEP", "MAR 9"). La app y los widgets usan las mismas.
+enum AscendDateText {
+    private static func formatter(_ format: String) -> DateFormatter {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "es_MX")
+        f.dateFormat = format
+        return f
+    }
+
+    private static let long = formatter("EEEE d MMM")
+    private static let short = formatter("EEE d")
+
+    static func kicker(_ date: Date) -> String {
+        long.string(from: date).replacingOccurrences(of: ".", with: "")
+    }
+
+    static func shortKicker(_ date: Date) -> String {
+        short.string(from: date).replacingOccurrences(of: ".", with: "")
+    }
+}

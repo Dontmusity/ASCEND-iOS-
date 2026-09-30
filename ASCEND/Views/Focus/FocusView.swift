@@ -147,12 +147,17 @@ struct FocusView: View {
         appState.startFocusSession(minutes: appState.focusBlockMinutes)
         displaySeconds = appState.focusSecondsRemaining
         armTicker()
+        if let end = appState.focusSessionEndDate {
+            FocusLiveActivity.start(minutes: appState.focusBlockMinutes,
+                                    subject: selectedSubject.isEmpty ? nil : selectedSubject, endDate: end)
+        }
     }
 
     private func stop() {
         timer?.invalidate()
         timer = nil
         appState.finishFocusSession(subject: selectedSubject.isEmpty ? nil : selectedSubject)
+        FocusLiveActivity.end()
         displaySeconds = appState.focusBlockMinutes * 60
     }
 
