@@ -4,40 +4,61 @@ import Combine
 enum CarouselPage: Hashable {
     case builtin(CalendarLane)
     case custom(UUID)
-    case addNew
+}
+
+enum HomePeriod: String, CaseIterable, Hashable {
+    case day = "Día", week = "Semana", month = "Mes"
 }
 
 struct HomeView: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedPage: CarouselPage = .builtin(.all)
+    @State private var period: HomePeriod = .day
+    @State private var showExtraLanes = false
     @State private var showNewEvent = false
     @State private var showNewLane = false
+    @Namespace private var chipNamespace
     private let completionTicker = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
 
-    /// Los carruseles se adaptan: si no estudias, no aparece Escuela; si no entrenas, no aparece Gym.
-    private var pages: [CarouselPage] {
+    /// Los carriles se adaptan: si no estudias, no aparece Escuela; si no entrenas, no aparece Gym.
+    private var builtinPages: [CarouselPage] {
         var lanes: [CalendarLane] = [.all]
         if appState.education.studies || !appState.classes.isEmpty { lanes.append(.school) }
         if appState.activityKind != .none || !appState.workouts.isEmpty || !appState.sports.isEmpty { lanes.append(.gym) }
         if !appState.meals.isEmpty { lanes.append(.food) }
         if appState.customActivities.contains(where: { $0.laneID == nil }) { lanes.append(.hobbies) }
-
-        var result = lanes.map { CarouselPage.builtin($0) }
-        result += appState.customLanes.map { .custom($0.id) }
-        if appState.canAddCustomLane { result.append(.addNew) }
-        return result
+        return lanes.map { CarouselPage.builtin($0) }
     }
+
+    private var customPages: [CarouselPage] { appState.customLanes.map { .custom($0.id) } }
+    private var pages: [CarouselPage] { builtinPages + customPages }
+
+    /// Si el carril elegido desaparece (se borró), vuelve a Todo.
+    private var activePage: CarouselPage { pages.contains(selectedPage) ? selectedPage : .builtin(.all) }
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 0) {
                 header
+                controls
+                chips
                 nowCard
-                carousel
+                content
+                    .padding(.top, 14)
+                    .frame(maxHeight: .infinity)
+                    // Atajo del carrusel anterior: deslizar a los lados cambia de carril.
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 30).onEnded { value in
+                            let dx = value.translation.width
+                            guard abs(dx) > 60, abs(dx) > abs(value.translation.height) * 1.5 else { return }
+                            movePage(by: dx < 0 ? 1 : -1)
+                        }
+                    )
             }
             .readableWidth()
             .background(Color.ascendBackground.ignoresSafeArea())
-            .navigationBarHidden(true)
+            .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showNewEvent) { NewEventSheet() }
             .sheet(isPresented: $showNewLane) { NewLaneSheet() }
             .onAppear { appState.checkEndedEntries() }
@@ -62,93 +83,239 @@ struct HomeView: View {
         appState.pendingCompletionEntryID = nil
     }
 
+    private func movePage(by step: Int) {
+        guard let index = pages.firstIndex(of: activePage) else { return }
+        let target = min(max(index + step, 0), pages.count - 1)
+        guard target != index else { return }
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) {
+            selectedPage = pages[target]
+            if case .custom = pages[target] { showExtraLanes = true }
+        }
+    }
+
     // MARK: Encabezado
 
     private var header: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(appState.greeting)
-                    .font(.title3.bold())
-                    .foregroundColor(.ascendTextPrimary)
-                Text(appState.aiDaySummary)
-                    .font(.footnote)
-                    .foregroundColor(.ascendTextSecondary)
-                    .lineLimit(2)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 9) {
+                AscendMark(strokeColor: .ascendGray, innerColor: .ascendGold)
+                    .frame(width: 20, height: 20)
+                AscendKicker(text: Self.dateKicker(Date()))
+                Spacer()
+                StreakBadge()
             }
+            .padding(.top, 6)
+
+            Text(appState.greeting.replacingOccurrences(of: ", ", with: ",\n"))
+                .font(.ascendTitleXL)
+                .foregroundColor(.ascendTextPrimary)
+                .padding(.top, 10)
+            Text(appState.aiDaySummary)
+                .font(.subheadline)
+                .foregroundColor(.ascendTextSecondary)
+                .lineLimit(2)
+                .padding(.top, 9)
+        }
+        .padding(.horizontal, 20)
+    }
+
+    private static let kickerFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "es_MX")
+        f.dateFormat = "EEEE d MMM"
+        return f
+    }()
+
+    static func dateKicker(_ date: Date) -> String {
+        kickerFormatter.string(from: date).replacingOccurrences(of: ".", with: "")
+    }
+
+    // MARK: Día / Semana / Mes + calendario
+
+    private var controls: some View {
+        HStack(spacing: 10) {
+            AscendSegmented(options: HomePeriod.allCases, selection: $period) { $0.rawValue }
             Spacer()
-            StreakBadge()
+            // El "+" de agregar evento vive aquí ahora: calendario con plus, a un toque.
             Button { showNewEvent = true } label: {
-                Image(systemName: "plus.circle.fill")
-                    .font(.title2)
-                    .foregroundColor(.ascendGold)
+                Image(systemName: "calendar.badge.plus")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.ascendTextSecondary)
+                    .frame(width: 32, height: 32)
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Color.ascendHairline, lineWidth: 1))
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
             }
-            .frame(minWidth: 44, minHeight: 44)
+            .buttonStyle(AscendPressStyle())
             .accessibilityLabel("Agregar evento")
         }
         .padding(.horizontal, 20)
-        .padding(.top, 8)
+        .padding(.top, 12)
     }
 
-    // MARK: Ahora / siguiente (punto 43)
+    // MARK: Chips de carriles
+
+    private var chips: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(builtinPages, id: \.self) { page in
+                        chip(for: page)
+                    }
+                    AscendChip(icon: "plus", title: showExtraLanes ? "Ocultar carriles" : "Más carriles",
+                               color: .ascendGray, showsTitle: false, dashed: true) {
+                        if appState.customLanes.isEmpty {
+                            showNewLane = true
+                        } else {
+                            showExtraLanes.toggle()
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+            }
+
+            if showExtraLanes && !appState.customLanes.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(customPages, id: \.self) { page in
+                            chip(for: page)
+                        }
+                        if appState.canAddCustomLane {
+                            AscendChip(icon: "plus", title: "Nuevo carril", color: .ascendGray, dashed: true) {
+                                showNewLane = true
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    private func chip(for page: CarouselPage) -> some View {
+        let info = chipInfo(page)
+        return AscendChip(icon: info.icon, title: info.title, color: info.color,
+                          isActive: activePage == page, namespace: chipNamespace) {
+            selectedPage = page
+        }
+    }
+
+    private func chipInfo(_ page: CarouselPage) -> (icon: String, title: String, color: Color) {
+        switch page {
+        case .builtin(let lane):
+            return (lane.icon, lane.rawValue, lane.accentColor)
+        case .custom(let id):
+            let lane = appState.customLanes.first { $0.id == id }
+            return (lane?.icon ?? "star", lane?.name ?? "Carril", lane?.accentColor ?? .ascendGold)
+        }
+    }
+
+    // MARK: Ahora / siguiente
 
     @ViewBuilder
     private var nowCard: some View {
-        if let current = appState.currentEntry {
-            HStack(spacing: 12) {
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(current.color)
-                    .frame(width: 4, height: 38)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("AHORA").font(.caption2.bold()).foregroundColor(.ascendTextSecondary)
-                    Text(current.title).font(.subheadline.bold()).foregroundColor(.ascendTextPrimary)
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("\(appState.minutesRemaining(of: current)) min")
-                        .font(.subheadline.bold())
-                        .foregroundColor(.ascendTextPrimary)
-                    Text("restantes").font(.caption2).foregroundColor(.ascendTextSecondary)
-                }
+        // Se redibuja cada 30 s para que los minutos restantes y la barra avancen solos.
+        TimelineView(.periodic(from: .now, by: 30)) { _ in
+            if let current = appState.currentEntry {
+                currentCard(current)
+            } else if let next = appState.nextEntry {
+                nextCard(next)
             }
-            .padding(12)
-            .background(Color.ascendSurface)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-            .padding(.horizontal, 20)
-            .accessibilityElement(children: .combine)
-        } else if let next = appState.nextEntry {
-            HStack(spacing: 12) {
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(next.color.opacity(0.6))
-                    .frame(width: 4, height: 38)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("SIGUIENTE").font(.caption2.bold()).foregroundColor(.ascendTextSecondary)
-                    Text(next.title).font(.subheadline.bold()).foregroundColor(.ascendTextPrimary)
-                }
-                Spacer()
-                Text(next.start.label)
-                    .font(.subheadline.bold())
-                    .foregroundColor(.ascendTextPrimary)
-            }
-            .padding(12)
-            .background(Color.ascendCard)
-            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.ascendGray.opacity(0.2)))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-            .padding(.horizontal, 20)
-            .accessibilityElement(children: .combine)
         }
     }
 
-    // MARK: Carrusel
-
-    private var carousel: some View {
-        TabView(selection: $selectedPage) {
-            ForEach(pages, id: \.self) { page in
-                pageView(page).tag(page)
+    private func currentCard(_ current: ScheduleEntry) -> some View {
+        let total = max(current.end.totalMinutes - current.start.totalMinutes, 1)
+        let remaining = appState.minutesRemaining(of: current)
+        return HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 0) {
+                AscendKicker(text: "Ahora", color: .ascendOnSurfaceTertiary)
+                Text(current.title)
+                    .font(.ascendTitleM)
+                    .foregroundColor(.ascendOnSurface)
+                    .padding(.top, 8)
+                if let subtitle = current.subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.footnote)
+                        .foregroundColor(.ascendOnSurfaceSecondary)
+                        .padding(.top, 3)
+                }
+            }
+            Spacer(minLength: 0)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("\(remaining)")
+                    .font(.ascendNumber(34))
+                    .monospacedDigit()
+                    .foregroundColor(.ascendOnSurface)
+                    .contentTransition(.numericText())
+                Text("min restantes")
+                    .font(.caption2.weight(.medium))
+                    .foregroundColor(.ascendOnSurfaceSecondary)
             }
         }
-        .tabViewStyle(.page(indexDisplayMode: .always))
-        .indexViewStyle(.page(backgroundDisplayMode: .always))
-        .frame(maxHeight: .infinity)
+        .padding(EdgeInsets(top: 15, leading: 18, bottom: 20, trailing: 18))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.ascendSurface)
+        .overlay(alignment: .bottom) {
+            AscendProgressBar(progress: Double(total - remaining) / Double(total),
+                              track: Color.ascendOnSurface.opacity(0.08), height: 5, rounded: false)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .padding(.horizontal, 20)
+        .padding(.top, 10)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func nextCard(_ next: ScheduleEntry) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                AscendKicker(text: "Siguiente")
+                Text(next.title).font(.body.weight(.semibold)).foregroundColor(.ascendTextPrimary)
+            }
+            Spacer()
+            Text(next.start.label)
+                .font(.ascendNumber(18))
+                .monospacedDigit()
+                .foregroundColor(.ascendTextPrimary)
+        }
+        .padding(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+        .areaTint(next.color, fill: 0.10)
+        .padding(.horizontal, 20)
+        .padding(.top, 10)
+        .accessibilityElement(children: .combine)
+    }
+
+    // MARK: Contenido
+
+    @ViewBuilder
+    private var content: some View {
+        switch period {
+        case .day:
+            pageView(activePage)
+        case .week:
+            AgendaListView(days: 7) { entries(for: activePage, on: $0) }
+        case .month:
+            AgendaListView(days: Self.daysLeftInMonth()) { entries(for: activePage, on: $0) }
+        }
+    }
+
+    private func entries(for page: CarouselPage, on weekday: Weekday) -> [ScheduleEntry] {
+        switch page {
+        case .builtin(let lane):
+            return appState.entries(for: weekday, lane: lane)
+        case .custom(let id):
+            guard let lane = appState.customLanes.first(where: { $0.id == id }) else { return [] }
+            return appState.entries(inCustomLane: lane, weekday: weekday)
+        }
+    }
+
+    private static func daysLeftInMonth(from date: Date = Date()) -> Int {
+        let calendar = Calendar.current
+        let total = calendar.range(of: .day, in: .month, for: date)?.count ?? 30
+        return total - calendar.component(.day, from: date) + 1
     }
 
     @ViewBuilder
@@ -166,22 +333,75 @@ struct HomeView: View {
             if let lane = appState.customLanes.first(where: { $0.id == id }) {
                 CustomLaneView(lane: lane)
             }
-        case .addNew:
-            AddLaneCard { showNewLane = true }
         }
     }
 }
 
-/// Vista resumen: el día completo mezclando todo, compacto.
+/// Semana y Mes: los mismos datos del horario, agrupados por día. Solo muestra días con algo.
+struct AgendaListView: View {
+    let days: Int
+    let entriesFor: (Weekday) -> [ScheduleEntry]
+
+    private var agenda: [(date: Date, entries: [ScheduleEntry])] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        return (0..<days).compactMap { offset in
+            guard let date = calendar.date(byAdding: .day, value: offset, to: today) else { return nil }
+            let list = entriesFor(Weekday.from(date))
+            return list.isEmpty ? nil : (date, list)
+        }
+    }
+
+    var body: some View {
+        let agenda = agenda
+        ScrollView {
+            if agenda.isEmpty {
+                AscendEmptyState(title: "Tu día está vacío",
+                                 message: "Agrega tus clases, entrenamientos o actividades y aparecerán aquí.")
+                    .padding(.top, 40)
+            } else {
+                LazyVStack(alignment: .leading, spacing: 20) {
+                    ForEach(agenda, id: \.date) { day in
+                        VStack(alignment: .leading, spacing: 10) {
+                            AscendKicker(text: HomeView.dateKicker(day.date))
+                            ForEach(day.entries) { entry in
+                                HStack(spacing: 12) {
+                                    Text(entry.start.label)
+                                        .font(.ascendRounded(11, .medium, relativeTo: .caption2))
+                                        .foregroundColor(.ascendTextSecondary)
+                                        .frame(width: 38, alignment: .leading)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(entry.title)
+                                            .font(.subheadline.weight(.semibold))
+                                            .foregroundColor(.ascendTextPrimary)
+                                        Text([entry.timeLabel, entry.subtitle ?? ""].filter { !$0.isEmpty }.joined(separator: " · "))
+                                            .font(.caption)
+                                            .foregroundColor(.ascendTextSecondary)
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 9)
+                                    .areaTint(entry.color, fill: 0.14, cornerRadius: 12, bordered: false)
+                                }
+                                .accessibilityElement(children: .combine)
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 90) // deja libre el FAB
+            }
+        }
+    }
+}
+
+/// Vista general: el día completo mezclando todos los carriles.
 struct GeneralLaneView: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            LaneHeader(title: "Todo", icon: "square.stack.3d.up", color: .ascendGold)
-            DayTimelineView(entries: appState.entries(for: .today, lane: .all)) { entry in
-                appState.delete(entry: entry)
-            }
+        DayTimelineView(entries: appState.entries(for: .today, lane: .all)) { entry in
+            appState.delete(entry: entry)
         }
     }
 }
@@ -191,7 +411,7 @@ struct PersonalLaneView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            LaneHeader(title: "Personal", icon: "paintpalette", color: Color(hex: "9E8AA8"))
+            LaneHeader(title: "Personal", icon: "paintpalette", color: CalendarLane.hobbies.accentColor)
             DayTimelineView(entries: appState.entries(for: .today, lane: .hobbies)) { entry in
                 appState.delete(entry: entry)
             }
@@ -245,35 +465,12 @@ struct LaneHeader<Trailing: View>: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: icon).foregroundColor(color).accessibilityHidden(true)
-            Text(title).font(.headline).foregroundColor(.ascendTextPrimary)
+            Circle().fill(color).frame(width: 7, height: 7).accessibilityHidden(true)
+            Image(systemName: icon).font(.footnote.weight(.semibold)).foregroundColor(color).accessibilityHidden(true)
+            Text(title).font(.ascendRounded(17, relativeTo: .headline)).foregroundColor(.ascendTextPrimary)
             Spacer()
             trailing()
         }
         .padding(.horizontal, 20)
-    }
-}
-
-struct AddLaneCard: View {
-    let action: () -> Void
-
-    var body: some View {
-        VStack(spacing: 12) {
-            Spacer()
-            Image(systemName: "plus.circle")
-                .font(.system(size: 38))
-                .foregroundColor(.ascendGold)
-            Text("Crea tu propio carrusel").font(.headline).foregroundColor(.ascendTextPrimary)
-            Text("Hasta 3 áreas propias para lo que tú quieras seguir.")
-                .font(.footnote)
-                .foregroundColor(.ascendTextSecondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-            Button("Crear carrusel", action: action)
-                .buttonStyle(.borderedProminent)
-                .tint(.ascendGold)
-            Spacer()
-        }
-        .frame(maxWidth: .infinity)
     }
 }

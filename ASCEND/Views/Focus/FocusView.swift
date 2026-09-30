@@ -14,76 +14,108 @@ struct FocusView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 22) {
+                VStack(spacing: 0) {
+                    header
                     timerCard
                     focusProfileCard
                     if !appState.studySessions.isEmpty { historyCard }
                 }
-                .padding(.vertical, 16)
+                .padding(.bottom, 90) // deja libre el FAB
                 .readableWidth()
             }
             .background(Color.ascendBackground.ignoresSafeArea())
-            .navigationTitle("Enfoque")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) { StreakBadge() }
-            }
+            .toolbar(.hidden, for: .navigationBar)
         }
         .onAppear { resumeIfNeeded() }
         .onDisappear { timer?.invalidate() }
+        .onChange(of: appState.isFocusSessionActive) { _, isActive in
+            // Si la sesión se cerró desde fuera (widget, isla dinámica), el contador de aquí también para.
+            if !isActive {
+                timer?.invalidate()
+                timer = nil
+                displaySeconds = appState.focusBlockMinutes * 60
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack {
+            AscendKicker(text: "Enfoque")
+            Spacer()
+            StreakBadge()
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 6)
     }
 
     // MARK: Temporizador
 
     private var timerCard: some View {
-        VStack(spacing: 16) {
-            AscendLogoTile(size: 44)
-
+        VStack(spacing: 0) {
             Text(phrase)
                 .font(.subheadline)
                 .foregroundColor(.ascendTextSecondary)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 30)
+                .padding(.horizontal, 34)
+                .padding(.top, 8)
 
             ZStack {
-                Circle().stroke(Color.ascendGray.opacity(0.15), lineWidth: 10)
-                Circle()
-                    .trim(from: 0, to: progress)
-                    .stroke(Color.ascendGold, style: StrokeStyle(lineWidth: 10, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                Text(timeText)
-                    .font(.system(.title, design: .rounded).bold())
-                    .minimumScaleFactor(0.5)
-                    .accessibilityLabel("\(displaySeconds / 60) minutos \(displaySeconds % 60) segundos restantes")
+                Circle().fill(Color.ascendSurface.opacity(0.55))
+                AscendRing(progress: progress, track: Color.ascendOnSurface.opacity(0.08), lineWidth: 10)
+                VStack(spacing: 9) {
+                    Text(timeText)
+                        .font(.ascendRounded(46, relativeTo: .largeTitle))
+                        .monospacedDigit()
+                        .foregroundColor(.ascendOnSurface)
+                        .minimumScaleFactor(0.5)
+                        .accessibilityLabel("\(displaySeconds / 60) minutos \(displaySeconds % 60) segundos restantes")
+                    if !selectedSubject.isEmpty {
+                        AscendKicker(text: selectedSubject, color: .ascendOnSurfaceTertiary)
+                            .lineLimit(1)
+                            .padding(.horizontal, 30)
+                    }
+                }
             }
-            .frame(width: 180, height: 180)
+            .frame(width: 212, height: 212)
+            .padding(.top, 14)
 
             if !appState.isFocusSessionActive {
-                Picker("Micro-bloque", selection: $appState.focusBlockMinutes) {
-                    ForEach(blockOptions, id: \.self) { Text("\($0) min").tag($0) }
+                HStack(spacing: 8) {
+                    ForEach(blockOptions, id: \.self) { minutes in
+                        let isActive = appState.focusBlockMinutes == minutes
+                        AscendChip(icon: nil, title: isActive ? "\(minutes) min" : "\(minutes)",
+                                   isActive: isActive) {
+                            appState.focusBlockMinutes = minutes
+                            displaySeconds = minutes * 60
+                        }
+                        .accessibilityLabel("\(minutes) minutos")
+                    }
                 }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 30)
-                .onChange(of: appState.focusBlockMinutes) { newValue in
-                    displaySeconds = newValue * 60
-                }
+                .padding(.top, 18)
 
                 if !appState.subjects.isEmpty {
                     Picker("Materia", selection: $selectedSubject) {
                         Text("Sin materia").tag("")
                         ForEach(appState.subjects, id: \.self) { Text($0).tag($0) }
                     }
-                    .padding(.horizontal, 30)
+                    .tint(.ascendTextSecondary)
+                    .padding(.top, 4)
                 }
 
-                Button("Empezar sesión") { start() }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.ascendGold)
-                    .frame(minHeight: 44)
+                Button { start() } label: {
+                    Label("Empezar sesión", systemImage: "play.fill")
+                }
+                .buttonStyle(AscendPrimaryButtonStyle())
+                .padding(.top, 12)
             } else {
                 Button("Desbloquear ahora") { stop() }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.ascendGray)
-                    .frame(minHeight: 44)
+                    .font(.body.weight(.semibold))
+                    .foregroundColor(.ascendTextPrimary)
+                    .padding(.horizontal, 26)
+                    .frame(minHeight: 50)
+                    .overlay(Capsule().stroke(Color.ascendLine.opacity(0.5), lineWidth: 1))
+                    .buttonStyle(AscendPressStyle())
+                    .padding(.top, 18)
             }
         }
         .padding(.horizontal, 20)
@@ -137,50 +169,69 @@ struct FocusView: View {
     // MARK: Perfil de enfoque
 
     private var focusProfileCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Modo de enfoque").font(.headline).foregroundColor(.ascendTextPrimary)
+        VStack(alignment: .leading, spacing: 0) {
+            AscendKicker(text: "Modo de enfoque")
 
             if appState.focusProfiles.isEmpty {
                 EmptyHint(text: "Crea perfiles de enfoque en Perfil → Enfoque y bloqueo para elegir qué apps limitar.")
+                    .padding(.top, 12)
             } else {
-                ForEach(appState.focusProfiles) { profile in
-                    Button {
-                        selectedProfileID = selectedProfileID == profile.id ? nil : profile.id
-                    } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(profile.name).foregroundColor(.ascendTextPrimary)
-                                Text(profile.blockedApps.isEmpty ? "Sin apps seleccionadas"
-                                     : profile.blockedApps.joined(separator: ", "))
-                                    .font(.caption).foregroundColor(.ascendTextSecondary).lineLimit(1)
+                VStack(spacing: 9) {
+                    ForEach(appState.focusProfiles) { profile in
+                        let isSelected = selectedProfileID == profile.id
+                        Button {
+                            selectedProfileID = isSelected ? nil : profile.id
+                        } label: {
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(profile.name)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundColor(.ascendTextPrimary)
+                                    Text(profile.blockedApps.isEmpty ? "Sin apps seleccionadas"
+                                         : profile.blockedApps.joined(separator: ", "))
+                                        .font(.caption2)
+                                        .foregroundColor(.ascendTextSecondary)
+                                        .lineLimit(1)
+                                }
+                                Spacer()
+                                AscendCheck(isOn: isSelected, size: 24)
                             }
-                            Spacer()
-                            Image(systemName: selectedProfileID == profile.id ? "checkmark.circle.fill" : "circle")
-                                .foregroundColor(selectedProfileID == profile.id ? .ascendGold : .ascendGray)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 13)
+                            .frame(minHeight: 44)
+                            .areaTint(.ascendGold, fill: isSelected ? 0.12 : 0.05)
                         }
-                        .padding(12)
-                        .frame(minHeight: 44)
-                        .background(Color.ascendCard)
-                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.ascendGray.opacity(0.15)))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .buttonStyle(AscendPressStyle())
+                        .accessibilityAddTraits(isSelected ? .isSelected : [])
                     }
-                    .buttonStyle(.plain)
                 }
+                .padding(.top, 12)
             }
 
-            Text(ScreenTimeService.availabilityNote)
-                .font(.caption2)
-                .foregroundColor(.ascendTextSecondary)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Las apps vitales (Teléfono, Mensajes, Cámara, Mapas) nunca se bloquean, y el botón “Desbloquear ahora” siempre está disponible durante una sesión.")
+                Text(ScreenTimeService.availabilityNote)
+            }
+            .font(.caption)
+            .foregroundColor(.ascendTextSecondary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.ascendLine.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+            .padding(.top, 14)
         }
         .padding(.horizontal, 20)
+        .padding(.top, 22)
     }
 
     private var historyCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Tus sesiones").font(.headline).foregroundColor(.ascendTextPrimary)
+            AscendKicker(text: "Tus sesiones")
             let total = appState.studySessions.reduce(0) { $0 + $1.minutes }
             HStack {
                 Text("\(appState.studySessions.count) sesiones")
+                    .foregroundColor(.ascendTextPrimary)
                 Spacer()
                 Text("\(total / 60)h \(total % 60)m en total")
                     .foregroundColor(.ascendTextSecondary)
@@ -189,8 +240,8 @@ struct FocusView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.ascendSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .ascendCard()
         .padding(.horizontal, 20)
+        .padding(.top, 14)
     }
 }

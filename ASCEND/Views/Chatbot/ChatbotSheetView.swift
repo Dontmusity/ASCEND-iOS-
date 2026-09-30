@@ -39,44 +39,65 @@ struct ChatbotSheetView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(spacing: 10) {
-                    Circle()
-                        .fill(Color.ascendGold)
-                        .frame(width: 36, height: 36)
-                        .overlay(Image(systemName: "sparkles").foregroundColor(.white))
-                    VStack(alignment: .leading) {
-                        Text("Ascender").font(.headline)
-                        Text(appState.profile.name.isEmpty ? "Hola" : "Hola, \(appState.profile.name)")
-                            .font(.caption)
-                            .foregroundColor(.ascendTextSecondary)
-                    }
-                }
-
-                Text(suggestion)
-                    .padding()
-                    .background(Color.ascendCream)
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Ascender no reemplaza ayuda profesional.")
-                        .font(.caption.bold())
-                    Text("No da diagnósticos, no inventa datos tuyos, y si detecta una señal de crisis emocional te va a sugerir buscar apoyo profesional en lugar de intentar resolverlo solo.")
-                        .font(.caption2)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 11) {
+                Circle()
+                    .fill(Color.ascendGold)
+                    .frame(width: 40, height: 40)
+                    .overlay(Image(systemName: "sparkles").foregroundColor(.white))
+                    .goldGlow()
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Ascender")
+                        .font(.ascendRounded(18, relativeTo: .headline))
+                        .foregroundColor(.ascendTextPrimary)
+                    Text(appState.profile.name.isEmpty ? "Hola" : "Hola, \(appState.profile.name)")
+                        .font(.caption)
                         .foregroundColor(.ascendTextSecondary)
                 }
-                .padding(.top, 4)
-
                 Spacer()
+                Button("Cerrar") { dismiss() }
+                    .buttonStyle(AscendPillButtonStyle())
             }
-            .padding()
-            .background(Color.ascendBackground.ignoresSafeArea())
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Cerrar") { dismiss() }
-                }
+            .padding(.top, 16)
+
+            // Burbuja del asistente: esquina inferior izquierda más cerrada.
+            Text(suggestion)
+                .font(.body)
+                .foregroundColor(.ascendOnSurface)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 16)
+                .background(
+                    UnevenRoundedRectangle(topLeadingRadius: 22, bottomLeadingRadius: 8,
+                                           bottomTrailingRadius: 22, topTrailingRadius: 22,
+                                           style: .continuous)
+                        .fill(Color.ascendSurface)
+                )
+                .padding(.top, 20)
+
+            // TODO(diseño): respuestas rápidas ("¿Qué sigue hoy?", "Mueve algo a mañana",
+            // "Solo quiero desahogarme") y el campo de texto con enviar. El bot todavía no tiene
+            // lógica para responder mensajes y el handoff pide no cambiarla; se agregan cuando exista.
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Ascender no reemplaza ayuda profesional.")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.ascendTextPrimary)
+                Text("No da diagnósticos, no inventa datos tuyos, y si detecta una señal de crisis emocional te va a sugerir buscar apoyo profesional en lugar de intentar resolverlo solo.")
+                    .font(.caption2)
+                    .foregroundColor(.ascendTextSecondary)
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color.ascendLine.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+            .padding(.top, 22)
+
+            Spacer()
         }
+        .padding(.horizontal, 20)
+        .background(Color.ascendBackground.ignoresSafeArea())
+        .presentationDragIndicator(.visible)
     }
 }

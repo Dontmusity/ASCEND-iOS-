@@ -3,80 +3,203 @@ import SwiftUI
 struct ProfileView: View {
     @EnvironmentObject private var appState: AppState
 
+    // Datos vivos para los subtítulos de cada fila (derivados, sin tocar AppState).
+    private var classesTodayText: String {
+        let count = appState.classes(on: .today).count
+        return count == 1 ? "1 clase hoy" : "\(count) clases hoy"
+    }
+
+    private var trainingText: String {
+        let days = Set(appState.workouts.flatMap(\.days) + appState.sports.flatMap(\.days)).count
+        return days == 0 ? appState.activityKind.rawValue : "\(days) días por semana"
+    }
+
+    private var activitiesText: String {
+        let lanes = appState.customLanes.count
+        if lanes > 0 { return lanes == 1 ? "1 carrusel" : "\(lanes) carruseles" }
+        let count = appState.customActivities.count
+        return count == 1 ? "1 actividad" : "\(count) actividades"
+    }
+
+    private var planDetail: String {
+        if appState.isPro, let until = appState.subscription.expirationDate {
+            return "hasta \(until.formatted(date: .abbreviated, time: .omitted))"
+        }
+        return "con anuncios"
+    }
+
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    HStack(spacing: 14) {
-                        Circle()
-                            .fill(Color.ascendSurface)
-                            .frame(width: 56, height: 56)
-                            .overlay(
-                                Text(String(appState.profile.name.prefix(1)).uppercased())
-                                    .font(.title2.bold())
-                                    .foregroundColor(.ascendTextPrimary)
-                                    .minimumScaleFactor(0.5))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(appState.profile.name.isEmpty ? "Tu perfil" : appState.profile.name)
-                                .font(.headline)
-                            Text(appState.education.summary)
-                                .font(.subheadline)
-                                .foregroundColor(.ascendTextSecondary)
-                        }
-                    }
-                }
-
-                Section("Mi rutina") {
-                    NavigationLink("Escuela y horario") { EditScheduleView() }
-                    NavigationLink("Entrenamiento y deporte") { EditTrainingView() }
-                    NavigationLink("Comidas y objetivo") { EditMealsView() }
-                    NavigationLink("Actividades personalizadas") { EditActivitiesView() }
-                }
-
-                Section("Plan") {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
                     HStack {
-                        Text(appState.subscription.label)
+                        AscendKicker(text: "Perfil")
                         Spacer()
-                        if appState.isPro, let until = appState.subscription.expirationDate {
-                            Text("hasta \(until.formatted(date: .abbreviated, time: .omitted))")
-                                .foregroundColor(.ascendTextSecondary)
-                                .font(.caption)
-                        } else {
-                            Text("con anuncios").foregroundColor(.ascendTextSecondary).font(.caption)
+                        StreakBadge()
+                    }
+                    .padding(.top, 6)
+
+                    identity
+
+                    AscendKicker(text: "Mi rutina").padding(.top, 20)
+                    groupedCard {
+                        link(icon: "graduationcap", title: "Escuela y horario", subtitle: classesTodayText,
+                             color: CalendarLane.school.accentColor) { EditScheduleView() }
+                        divider
+                        link(icon: "figure.strengthtraining.traditional", title: "Entrenamiento y deporte",
+                             subtitle: trainingText, color: CalendarLane.gym.accentColor) { EditTrainingView() }
+                        divider
+                        link(icon: "fork.knife", title: "Comidas y objetivo", subtitle: appState.physicalGoal.shortLabel,
+                             color: CalendarLane.food.accentColor) { EditMealsView() }
+                        divider
+                        link(icon: "list.bullet", title: "Actividades personalizadas", subtitle: activitiesText,
+                             color: CalendarLane.hobbies.accentColor) { EditActivitiesView() }
+                    }
+
+                    planCard
+
+                    AscendKicker(text: "Ajustes").padding(.top, 20)
+                    groupedCard {
+                        link(icon: "bell", title: "Notificaciones",
+                             subtitle: "Máximo \(appState.notificationPrefs.maxPerDay) al día") { NotificationsSettingsView() }
+                        divider
+                        link(icon: "timer", title: "Enfoque y bloqueo de apps",
+                             subtitle: appState.focusProfiles.count == 1 ? "1 perfil" : "\(appState.focusProfiles.count) perfiles") {
+                            FocusSettingsView()
+                        }
+                        divider
+                        link(icon: "shield", title: "Privacidad", subtitle: "Todo se queda en tu teléfono") { PrivacySettingsView() }
+                    }
+
+                    // Lo legal y la cuenta bajan a una línea al pie, fuera del recorrido principal.
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 14) {
+                            footerLink("Cuenta") { AccountSettingsView() }
+                            footerLink("Aviso de Privacidad") { PrivacyPolicyView() }
+                            footerLink("Términos de Uso") { TermsOfServiceView() }
+                            footerLink("Aviso Legal") { LegalNoticeView() }
                         }
                     }
-                    NavigationLink("Invita amigos y gana Pro") { ReferralsView() }
-                    NavigationLink("Suscripción") { UpgradeView() }
-                }
+                    .padding(.top, 8)
 
-                Section("Ajustes") {
-                    NavigationLink("Notificaciones") { NotificationsSettingsView() }
-                    NavigationLink("Enfoque y bloqueo de apps") { FocusSettingsView() }
-                    NavigationLink("Privacidad") { PrivacySettingsView() }
-                }
-
-                Section("Cuenta") {
-                    NavigationLink("Cuenta") { AccountSettingsView() }
-                }
-
-                Section("Legal") {
-                    NavigationLink("Aviso de Privacidad") { PrivacyPolicyView() }
-                    NavigationLink("Términos de Uso") { TermsOfServiceView() }
-                    NavigationLink("Aviso Legal") { LegalNoticeView() }
-                }
-
-                #if DEBUG
-                Section("Desarrollo") {
+                    #if DEBUG
                     Button("Cargar datos de ejemplo") { appState.loadSampleData() }
+                        .font(.footnote)
+                        .foregroundColor(.ascendTextSecondary)
+                        .frame(minHeight: 44)
+                    #endif
                 }
-                #endif
+                .padding(.horizontal, 20)
+                .padding(.bottom, 90) // deja libre el FAB
+                .readableWidth()
             }
-            .ascendListStyle()
-            .navigationTitle("Perfil")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) { StreakBadge() }
+            .background(Color.ascendBackground.ignoresSafeArea())
+            .toolbar(.hidden, for: .navigationBar)
+        }
+    }
+
+    private var identity: some View {
+        HStack(spacing: 14) {
+            Circle()
+                .fill(Color.ascendSurface)
+                .frame(width: 58, height: 58)
+                .overlay(
+                    Text(String(appState.profile.name.prefix(1)).uppercased())
+                        .font(.ascendNumber(24))
+                        .foregroundColor(.ascendOnSurface)
+                        .minimumScaleFactor(0.5))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(appState.profile.name.isEmpty ? "Tu perfil" : appState.profile.name)
+                    .font(.ascendRounded(22, relativeTo: .title2))
+                    .foregroundColor(.ascendTextPrimary)
+                Text([appState.education.summary, appState.profile.university]
+                        .filter { !$0.isEmpty }.joined(separator: " · "))
+                    .font(.footnote)
+                    .foregroundColor(.ascendTextSecondary)
             }
         }
+        .padding(.top, 12)
+    }
+
+    /// "Tu plan" es la única pieza en ascendSurface de la pantalla.
+    private var planCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 0) {
+                    AscendKicker(text: "Tu plan", color: .ascendOnSurfaceTertiary)
+                    Text(appState.subscription.label)
+                        .font(.ascendRounded(18, relativeTo: .headline))
+                        .foregroundColor(.ascendOnSurface)
+                        .padding(.top, 7)
+                    Text(planDetail)
+                        .font(.caption)
+                        .foregroundColor(.ascendOnSurfaceSecondary)
+                        .padding(.top, 3)
+                }
+                Spacer()
+                NavigationLink { UpgradeView() } label: {
+                    Text(appState.isPro ? "Suscripción" : "Ver Pro")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundColor(.ascendOnGold)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 9)
+                        .background(Capsule().fill(Color.ascendGold))
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(AscendPressStyle())
+            }
+            NavigationLink { ReferralsView() } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "person.2")
+                    Text("Invita amigos y gana Pro")
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.caption.weight(.semibold))
+                }
+                .font(.footnote.weight(.medium))
+                .foregroundColor(.ascendOnSurfaceSecondary)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 14)
+        .padding(.bottom, 4)
+        .ascendSurfaceCard(cornerRadius: 20)
+        .padding(.top, 16)
+    }
+
+    // MARK: Piezas
+
+    private var divider: some View {
+        Rectangle().fill(Color.ascendHairline).frame(height: 1)
+    }
+
+    private func groupedCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(spacing: 0) { content() }
+            .ascendCard(cornerRadius: 20)
+            .padding(.top, 11)
+    }
+
+    private func link<Destination: View>(icon: String, title: String, subtitle: String,
+                                         color: Color = .ascendGray,
+                                         @ViewBuilder destination: @escaping () -> Destination) -> some View {
+        NavigationLink(destination: destination) {
+            AscendAreaRow(icon: icon, title: title, subtitle: subtitle, color: color)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func footerLink<Destination: View>(_ title: String,
+                                               @ViewBuilder destination: @escaping () -> Destination) -> some View {
+        NavigationLink(destination: destination) {
+            Text(title)
+                .font(.caption)
+                .foregroundColor(.ascendTextSecondary)
+                .frame(minHeight: 44)
+        }
+        .buttonStyle(.plain)
     }
 }
 
