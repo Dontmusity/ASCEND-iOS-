@@ -118,6 +118,20 @@ final class AppState: ObservableObject {
         Persistence.save(snapshot())
     }
 
+    /// Guarda ya, sin esperar el debounce. La usan los widgets (su proceso puede morir antes)
+    /// y la app al irse a segundo plano.
+    func saveNow() {
+        persist()
+    }
+
+    /// Relee lo guardado: un widget pudo haber marcado un hábito mientras la app estaba cerrada.
+    func reloadFromDisk() {
+        guard Persistence.load() != nil else { return } // sin nada guardado no hay qué releer
+        let wasLoggedIn = isLoggedIn // releer datos no debe volver a iniciar una sesión cerrada
+        restore()
+        isLoggedIn = wasLoggedIn
+    }
+
     private func restore() {
         guard let s = Persistence.load() else {
             referralCode = Self.makeReferralCode()
@@ -129,7 +143,7 @@ final class AppState: ObservableObject {
         sports = s.sports; meals = s.meals; physicalGoal = s.physicalGoal
         customActivities = s.customActivities; customLanes = s.customLanes
         freeTimeBlocks = s.freeTimeBlocks; manualEvents = s.manualEvents
-        habits = s.habits; todos = s.todos; goals = s.goals; reminders = s.reminders
+        habits = s.habits.map { $0.migratingLegacyDays() }; todos = s.todos; goals = s.goals; reminders = s.reminders
         tramites = s.tramites; resaleItems = s.resaleItems
         expenses = s.expenses; budget = s.budget; expensesHidden = s.expensesHidden
         expensesPINEnabled = s.expensesPINEnabled; expensesPIN = s.expensesPIN
@@ -518,7 +532,7 @@ final class AppState: ObservableObject {
 
     func toggleHabit(_ habit: Habit) {
         guard let i = habits.firstIndex(where: { $0.id == habit.id }) else { return }
-        let day = Calendar.current.component(.day, from: Date())
+        let day = Habit.dayKey()
         if habits[i].completedDays.contains(day) {
             habits[i].completedDays.remove(day)
         } else {
@@ -528,7 +542,7 @@ final class AppState: ObservableObject {
     }
 
     func isHabitDoneToday(_ habit: Habit) -> Bool {
-        habit.completedDays.contains(Calendar.current.component(.day, from: Date()))
+        habit.completedDays.contains(Habit.dayKey())
     }
 
     /// Marca el día como activo. Set de fechas ⇒ abrir la app 20 veces no infla la racha.
@@ -688,15 +702,17 @@ final class AppState: ObservableObject {
 
     // MARK: - Dinero (todo derivado del presupuesto actual, nunca cacheado)
 
-    var totalSpentMXN: Double { expenses.reduce(0) { $0 + $1.amountMXN } }
     var monthlyBudgetMXN: Double { budget.monthlyAmount }
-    var remainingBudgetMXN: Double { max(budget.monthlyAmount - totalSpentMXN, 0) }
+    /// El presupuesto es mensual: se compara contra lo gastado este mes, no contra todo el historial.
+    var remainingBudgetMXN: Double { max(budget.monthlyAmount - spentThisMonth, 0) }
     var budgetUsedRatio: Double {
         guard budget.monthlyAmount > 0 else { return 0 }
-        return min(totalSpentMXN / budget.monthlyAmount, 1)
+        return min(spentThisMonth / budget.monthlyAmount, 1)
     }
+    /// Gastos hormiga de los últimos 7 días (la tarjeta dice "de la semana").
     var antExpensesTotalMXN: Double {
-        expenses.filter { $0.category == .fun_ }.reduce(0) { $0 + $1.amountMXN }
+        let start = Calendar.current.date(byAdding: .day, value: -6, to: Calendar.current.startOfDay(for: Date())) ?? Date()
+        return expenses.filter { $0.category == .fun_ && $0.date >= start }.reduce(0) { $0 + $1.amountMXN }
     }
 
     private func spent(from start: Date, to end: Date = Date()) -> Double {
@@ -767,7 +783,9 @@ final class AppState: ObservableObject {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
-        guard let data = try? encoder.encode(snapshot()),
+        var export = snapshot()
+        export.expensesPIN = "" // el PIN protege tus datos; no viaja dentro de ellos
+        guard let data = try? encoder.encode(export),
               let text = String(data: data, encoding: .utf8) else { return "{}" }
         return text
     }

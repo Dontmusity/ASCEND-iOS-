@@ -110,7 +110,9 @@ struct Habit: Identifiable, Codable {
     let id: UUID
     var name: String
     var area: HabitArea
-    var completedDays: Set<Int> // day-of-year markers, simplified demo model
+    /// Días marcados como clave yyyyMMdd (p. ej. 20260930). Las versiones viejas guardaban solo el
+    /// día del mes (1–31), y por eso un hábito del 5 de septiembre salía hecho el 5 de octubre.
+    var completedDays: Set<Int>
 
     init(id: UUID = UUID(), name: String, area: HabitArea, completedDays: Set<Int> = []) {
         self.id = id
@@ -119,8 +121,33 @@ struct Habit: Identifiable, Codable {
         self.completedDays = completedDays
     }
 
+    static func dayKey(_ date: Date = Date()) -> Int {
+        let c = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        return (c.year ?? 0) * 10000 + (c.month ?? 0) * 100 + (c.day ?? 0)
+    }
+
+    /// Días marcados dentro del mes de `date`.
+    func daysDone(inMonthOf date: Date = Date()) -> Int {
+        let month = Habit.dayKey(date) / 100
+        return completedDays.filter { $0 / 100 == month }.count
+    }
+
+    /// Pasa el formato viejo (1–31) al mes actual, que es como la app lo mostraba.
+    /// Los días posteriores a hoy no pueden ser de este mes, así que se descartan.
+    func migratingLegacyDays(now: Date = Date()) -> Habit {
+        guard completedDays.contains(where: { $0 < 100 }) else { return self }
+        let today = Habit.dayKey(now)
+        let monthBase = today / 100 * 100
+        var copy = self
+        copy.completedDays = Set(completedDays.compactMap { day in
+            guard day < 100 else { return day }
+            return monthBase + day <= today ? monthBase + day : nil
+        })
+        return copy
+    }
+
     var monthProgressText: String {
-        "\(completedDays.count) de 30 días este mes"
+        "\(daysDone()) de 30 días este mes"
     }
 }
 

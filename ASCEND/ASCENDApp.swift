@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct ASCENDApp: App {
     @StateObject private var appState = AppState()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -19,6 +20,13 @@ struct ASCENDApp: App {
                 }
             }
             .environmentObject(appState)
+            .onChange(of: scenePhase) { _, phase in
+                switch phase {
+                case .active: appState.reloadFromDisk()   // lo que se marcó desde un widget
+                case .background: appState.saveNow()      // que el widget vea lo último
+                default: break
+                }
+            }
             .task {
                 await NotificationService.shared.refreshStatus()
                 if appState.isOnboarded {
