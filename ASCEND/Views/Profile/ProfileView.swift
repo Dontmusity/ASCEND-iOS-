@@ -69,6 +69,8 @@ struct ProfileView: View {
                         }
                         divider
                         link(icon: "shield", title: "Privacidad", subtitle: "Todo se queda en tu teléfono") { PrivacySettingsView() }
+                        divider
+                        appearanceRow
                     }
 
                     // Lo legal y la cuenta bajan a una línea al pie, fuera del recorrido principal.
@@ -168,6 +170,33 @@ struct ProfileView: View {
         .padding(.bottom, 4)
         .ascendSurfaceCard(cornerRadius: 20)
         .padding(.top, 16)
+    }
+
+    @AppStorage("ascend.appearance") private var appearance = "system"
+
+    /// Sistema / Claro / Oscuro. Se guarda solo en este dispositivo.
+    private var appearanceRow: some View {
+        HStack(spacing: 12) {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.ascendGray.opacity(0.16))
+                .frame(width: 30, height: 30)
+                .overlay(Image(systemName: "circle.lefthalf.filled")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.ascendGray))
+                .accessibilityHidden(true)
+            Text("Apariencia").font(.body.weight(.medium)).foregroundColor(.ascendTextPrimary)
+            Spacer(minLength: 8)
+            Picker("Apariencia", selection: $appearance) {
+                Text("Sistema").tag("system")
+                Text("Claro").tag("light")
+                Text("Oscuro").tag("dark")
+            }
+            .labelsHidden()
+            .tint(.ascendTextSecondary)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
+        .frame(minHeight: 44)
     }
 
     // MARK: Piezas

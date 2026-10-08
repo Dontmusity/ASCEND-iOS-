@@ -4,6 +4,8 @@ import SwiftUI
 struct ASCENDApp: App {
     @StateObject private var appState = AppState()
     @Environment(\.scenePhase) private var scenePhase
+    /// Preferencia de apariencia de este dispositivo: "system", "light" o "dark".
+    @AppStorage("ascend.appearance") private var appearance = "system"
 
     var body: some Scene {
         WindowGroup {
@@ -20,6 +22,7 @@ struct ASCENDApp: App {
                 }
             }
             .environmentObject(appState)
+            .preferredColorScheme(appearance == "dark" ? .dark : appearance == "light" ? .light : nil)
             .onChange(of: scenePhase) { _, phase in
                 switch phase {
                 case .active: appState.reloadFromDisk()   // lo que se marcó desde un widget
